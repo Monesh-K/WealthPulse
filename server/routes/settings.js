@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../models/database');
+const cloudBackup = require('../services/cloudBackup');
 
 router.get('/', (req, res) => {
   try {
@@ -75,6 +76,8 @@ router.get('/export', (req, res) => {
       essentials: db.prepare('SELECT * FROM essentials WHERE id = 1').get(),
       settings: db.prepare('SELECT * FROM settings').all(),
       targetAllocation: db.prepare('SELECT * FROM target_allocation').all(),
+      bankAccounts: (() => { try { return db.prepare('SELECT * FROM bank_accounts').all(); } catch { return []; } })(),
+      users: (() => { try { return db.prepare('SELECT * FROM users').all(); } catch { return []; } })(),
       exportedAt: new Date().toISOString()
     };
     res.json({ success: true, data });
@@ -113,10 +116,57 @@ router.post('/import', (req, res) => {
         const stmt = db.prepare('INSERT INTO snapshots (date,assets,liabilities,net_worth,allocation) VALUES (?,?,?,?,?)');
         data.snapshots.forEach(s => stmt.run(s.date, s.assets, s.liabilities, s.net_worth, s.allocation));
       }
+      if (data.bankAccounts && data.bankAccounts.length) {
+        db.prepare('DELETE FROM bank_accounts').run();
+        const stmt = db.prepare('INSERT INTO bank_accounts (id,name,bank_name,account_type,balance,notes,account_number,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?)');
+        data.bankAccounts.forEach(b => stmt.run(b.id, b.name, b.bank_name || '', b.account_type || 'Savings', b.balance || 0, b.notes || '', b.account_number || '', b.updated_at, b.created_at));
+      }
+      if (data.users && data.users.length) {
+        db.prepare('DELETE FROM users').run();
+        const stmt = db.prepare('INSERT INTO users (id,google_id,email,name,picture,created_at,last_login) VALUES (?,?,?,?,?,?,?)');
+        data.users.forEach(u => stmt.run(u.id, u.google_id, u.email, u.name || '', u.picture || '', u.created_at, u.last_login));
+      }
     });
     txn();
     res.json({ success: true, message: 'Data restored successfully' });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// ─── Cloud Backup endpoints ─────────────────────
+router.get('/cloud-backup/status', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      enabled: cloudBackup.enabled,
+      message: cloudBackup.enabled
+        ? 'Cloud backup is active (GitHub Gist). Data auto-saves after changes and every 5 minutes.'
+        : 'Cloud backup is disabled. Set GITHUB_TOKEN and GIST_ID environment variables to enable.'
+    }
+  });
+});
+
+router.post('/cloud-backup/save', async (req, res) => {
+  if (!cloudBackup.enabled) {
+    return res.status(400).json({ success: false, error: 'Cloud backup not configured (GITHUB_TOKEN + GIST_ID required)' });
+  }
+  try {
+    await cloudBackup.forceSave();
+    res.json({ success: true, message: 'Backup saved to GitHub Gist successfully' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+router.post('/cloud-backup/restore', async (req, res) => {
+  if (!cloudBackup.enabled) {
+    return res.status(400).json({ success: false, error: 'Cloud backup not configured (GITHUB_TOKEN + GIST_ID required)' });
+  }
+  try {
+    const restored = await cloudBackup.restoreFromCloud();
+    res.json({ success: true, restored, message: restored ? 'Data restored from cloud backup' : 'No backup data found or local DB already has data' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 module.exports = router;

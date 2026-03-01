@@ -19,10 +19,27 @@ const bankAccountsRouter = require('./routes/bankAccounts');
 const authRouter = require('./routes/auth');
 const marketService = require('./services/marketService');
 const aiService = require('./services/aiService');
+const cloudBackup = require('./services/cloudBackup');
 const { requireAuth, optionalAuth } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ─── Cloud Backup: auto-save middleware ──────────
+// Triggers a debounced backup after any data-mutating API request
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && req.path.startsWith('/api/')) {
+    // Hook into response finish to trigger save only on success
+    const origEnd = res.end;
+    res.end = function (...args) {
+      origEnd.apply(this, args);
+      if (res.statusCode < 400) {
+        cloudBackup.scheduleSave();
+      }
+    };
+  }
+  next();
+});
 
 // ─── Security Middleware ─────────────────────────
 app.use(helmet({
@@ -334,24 +351,74 @@ cron.schedule('0 9 1 * *', () => {
   }
 }, { timezone: 'Asia/Kolkata' });
 
-// ─── Startup: run a full refresh after 10 seconds ──
-app.listen(PORT, () => {
-  console.log(`\n🚀 WealthPulse is running at http://localhost:${PORT}\n`);
-  console.log('📅 Scheduled refreshes:');
-  console.log('   • MF NAVs: daily at 9:30 PM IST');
-  console.log('   • Indian stocks: every 5 min during market hours (9:15 AM – 3:30 PM IST)');
-  console.log('   • US stocks: every 10 min during market hours (7 PM – 1:30 AM IST)');
-  console.log('   • Full refresh (gold, forex, FD): daily at 6 PM IST');
-  console.log('   • Monthly snapshot: 1st of each month at 9 AM IST\n');
-
-  // Delayed startup refresh
-  setTimeout(async () => {
-    console.log('[Startup] Running initial market price refresh...');
+// ─── Startup: restore cloud backup, then start server ──
+async function startServer() {
+  // Step 1: Restore data from cloud backup (if configured)
+  if (cloudBackup.enabled) {
+    console.log('\n☁️  Cloud Backup is ENABLED');
+    console.log('   • Auto-save: 30s after last data change');
+    console.log('   • Periodic save: every 5 minutes');
+    console.log('   • Shutdown save: on SIGTERM/SIGINT\n');
     try {
-      const updated = await marketService.refreshAllPrices(db);
-      console.log(`[Startup] ✅ Refreshed ${updated} assets`);
+      await cloudBackup.restoreFromCloud();
     } catch (e) {
-      console.error('[Startup] ❌ Initial refresh failed:', e.message);
+      console.error('[CloudBackup] Restore error (continuing anyway):', e.message);
     }
-  }, 10000);
+  } else {
+    console.log('\n☁️  Cloud Backup is DISABLED (set GITHUB_TOKEN + GIST_ID to enable)\n');
+  }
+
+  // Step 2: Start HTTP server
+  app.listen(PORT, () => {
+    console.log(`\n🚀 WealthPulse is running at http://localhost:${PORT}\n`);
+    console.log('📅 Scheduled refreshes:');
+    console.log('   • MF NAVs: daily at 9:30 PM IST');
+    console.log('   • Indian stocks: every 5 min during market hours (9:15 AM – 3:30 PM IST)');
+    console.log('   • US stocks: every 10 min during market hours (7 PM – 1:30 AM IST)');
+    console.log('   • Full refresh (gold, forex, FD): daily at 6 PM IST');
+    console.log('   • Monthly snapshot: 1st of each month at 9 AM IST');
+    if (cloudBackup.enabled) {
+      console.log('   • Cloud backup: every 5 min + on data changes + on shutdown');
+    }
+    console.log('');
+
+    // Delayed startup refresh
+    setTimeout(async () => {
+      console.log('[Startup] Running initial market price refresh...');
+      try {
+        const updated = await marketService.refreshAllPrices(db);
+        console.log(`[Startup] ✅ Refreshed ${updated} assets`);
+      } catch (e) {
+        console.error('[Startup] ❌ Initial refresh failed:', e.message);
+      }
+    }, 10000);
+  });
+}
+
+// ─── Cloud Backup: periodic save every 5 minutes ──
+cron.schedule('*/5 * * * *', async () => {
+  if (!cloudBackup.enabled) return;
+  console.log('[CRON] ☁️  Periodic cloud backup...');
+  try {
+    await cloudBackup.saveToCloud();
+  } catch (e) {
+    console.error('[CRON] ❌ Cloud backup failed:', e.message);
+  }
 });
+
+// ─── Graceful shutdown: save to cloud before exit ──
+async function gracefulShutdown(signal) {
+  console.log(`\n[Shutdown] ${signal} received — saving to cloud...`);
+  try {
+    await cloudBackup.forceSave();
+    console.log('[Shutdown] ✅ Cloud backup saved');
+  } catch (e) {
+    console.error('[Shutdown] ❌ Cloud backup failed:', e.message);
+  }
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Go!
+startServer();

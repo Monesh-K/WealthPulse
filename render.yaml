@@ -9,7 +9,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DB_PATH
-        value: /opt/render/project/data/wealthpulse.db
+        value: ./data/wealthpulse.db
       - key: JWT_SECRET
         generateValue: true
       - key: GOOGLE_CLIENT_ID
@@ -18,7 +18,7 @@ services:
         sync: false
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
-    disk:
-      name: wealthpulse-data
-      mountPath: /opt/render/project/data
-      sizeGB: 1
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GIST_ID
+        sync: false

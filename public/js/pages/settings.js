@@ -233,6 +233,14 @@ const SettingsPage = {
         </div>
       </div>
 
+      <!-- Cloud Backup -->
+      <div class="card mt-24" id="cloudBackupCard">
+        <div class="card-header"><div class="card-title">☁️ Cloud Backup (GitHub Gist)</div></div>
+        <div id="cloudBackupStatus" style="padding:4px 0">
+          <p class="text-muted" style="font-size:0.85rem">Checking cloud backup status...</p>
+        </div>
+      </div>
+
       <!-- Danger Zone -->
       <div class="card mt-24" style="border-color: var(--red)">
         <div class="card-header"><div class="card-title" style="color:var(--red)">⚠️ Danger Zone</div></div>
@@ -242,6 +250,61 @@ const SettingsPage = {
     `;
 
     this.previewEPF();
+    this.loadCloudBackupStatus();
+  },
+
+  async loadCloudBackupStatus() {
+    try {
+      const res = await API.request('/settings/cloud-backup/status');
+      const el = document.getElementById('cloudBackupStatus');
+      if (!el) return;
+      if (res.data?.enabled) {
+        el.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="color:var(--green);font-size:1.2rem">●</span>
+            <span style="font-size:0.9rem;font-weight:600;color:var(--green)">Active</span>
+            <span class="text-muted" style="font-size:0.82rem">— Data auto-saves to GitHub Gist after changes, every 5 min, and on shutdown</span>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="SettingsPage.cloudBackupSave()">⬆️ Save Now</button>
+            <button class="btn btn-outline btn-sm" onclick="SettingsPage.cloudBackupRestore()">⬇️ Restore from Cloud</button>
+          </div>`;
+      } else {
+        el.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="color:var(--text-muted);font-size:1.2rem">○</span>
+            <span style="font-size:0.9rem;font-weight:600;color:var(--text-muted)">Not Configured</span>
+          </div>
+          <p class="text-muted" style="font-size:0.82rem;line-height:1.5">
+            To enable cloud backup, set <code>GITHUB_TOKEN</code> and <code>GIST_ID</code> environment variables on your hosting platform.
+            This ensures your data survives server restarts on free hosting (Render, etc.).<br>
+            <a href="https://github.com/settings/tokens" target="_blank" style="color:var(--primary)">Create GitHub Token</a> →
+            <a href="https://gist.github.com" target="_blank" style="color:var(--primary)">Create Gist</a>
+          </p>`;
+      }
+    } catch (e) {
+      const el = document.getElementById('cloudBackupStatus');
+      if (el) el.innerHTML = `<p class="text-muted" style="font-size:0.85rem">Could not check cloud backup status</p>`;
+    }
+  },
+
+  async cloudBackupSave() {
+    if (!confirm('Save current data to cloud backup?')) return;
+    try {
+      Toast.info('Saving to cloud...');
+      await API.request('/settings/cloud-backup/save', { method: 'POST' });
+      Toast.success('Cloud backup saved!');
+    } catch (e) { Toast.error('Cloud save failed: ' + e.message); }
+  },
+
+  async cloudBackupRestore() {
+    if (!confirm('Restore data from cloud backup? This will overwrite local data if the database is empty.')) return;
+    try {
+      Toast.info('Restoring from cloud...');
+      const res = await API.request('/settings/cloud-backup/restore', { method: 'POST' });
+      Toast.success(res.message || 'Restore complete');
+      setTimeout(() => location.reload(), 1000);
+    } catch (e) { Toast.error('Cloud restore failed: ' + e.message); }
   },
 
   updateAllocTotal() {
