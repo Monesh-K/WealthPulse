@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: wealthpulse
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server/index.js
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /opt/render/project/data/wealthpulse.db
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+    disk:
+      name: wealthpulse-data
+      mountPath: /opt/render/project/data
+      sizeGB: 1

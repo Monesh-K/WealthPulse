@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2C6E49">
+<title>WealthPulse | Personal Portfolio Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --primary: #2C6E49;
+  --primary-light: #E8F2EC;
+  --primary-hover: #245a3b;
+  --red: #DC3545;
+  --red-light: #FDE8EA;
+  --amber: #CA8A04;
+  --amber-light: #FEF3C7;
+  --blue: #1E4D8C;
+  --blue-light: #E8F0FA;
+  --bg: #FAFBFC;
+  --card: #FFFFFF;
+  --border: #E5E7EB;
+  --text-1: #111827;
+  --text-2: #6B7280;
+  --text-3: #9CA3AF;
+  --surface-2: #F3F4F6;
+  --sidebar-bg: #FFFFFF;
+  --sidebar-active: #E8F2EC;
+  --font-display: 'DM Serif Display', serif;
+  --font-sans: 'Outfit', system-ui, -apple-system, sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+.dark {
+  --primary: #4ADE80;
+  --primary-light: #1a2e23;
+  --primary-hover: #5aee90;
+  --red: #F87171;
+  --red-light: #2d1f1f;
+  --amber: #FBBF24;
+  --amber-light: #2d2810;
+  --blue: #60A5FA;
+  --blue-light: #1e2a3e;
+  --bg: #0F1117;
+  --card: #1A1D27;
+  --border: #2D3040;
+  --text-1: #F1F5F9;
+  --text-2: #94A3B8;
+  --text-3: #64748B;
+  --surface-2: #242736;
+  --sidebar-bg: #1A1D27;
+  --sidebar-active: #1a2e23;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text-1);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Layout */
+.app { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 230px; flex-shrink: 0; position: sticky; top: 0; height: 100vh;
+  background: var(--sidebar-bg); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 50;
+  transition: transform 0.3s ease;
+}
+.sidebar-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 45;
+}
+.main-area { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  height: 48px; border-bottom: 1px solid var(--border); background: var(--card);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px; position: sticky; top: 0; z-index: 30;
+  backdrop-filter: blur(8px);
+}
+.content { flex: 1; padding: 24px; max-width: 1200px; width: 100%; margin: 0 auto; }
+
+/* Mobile */
+.mobile-header {
+  display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+  height: 56px; background: var(--card); border-bottom: 1px solid var(--border);
+  padding: 0 12px; align-items: center; justify-content: space-between;
+}
+@media (max-width: 1023px) {
+  .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); z-index: 50; }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar.open + .sidebar-overlay { display: block; }
+  .mobile-header { display: flex; }
+  .topbar { display: none; }
+  .content { padding: 16px; padding-top: 72px; }
+}
+
+/* Sidebar */
+.sidebar-logo { padding: 20px 20px 16px; }
+.sidebar-logo span { font-family: var(--font-display); font-size: 22px; color: var(--primary); }
+.sidebar-nav { flex: 1; padding: 0 12px; overflow-y: auto; }
+.sidebar-section { margin-bottom: 16px; }
+.sidebar-label {
+  padding: 0 10px; margin-bottom: 4px; font-family: var(--font-mono);
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-3);
+}
+.sidebar-link {
+  display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  min-height: 42px; border-radius: 8px; font-size: 14px; font-weight: 500;
+  color: var(--text-2); cursor: pointer; transition: all 0.15s;
+  text-decoration: none; border: none; background: none; width: 100%; text-align: left;
+}
+.sidebar-link:hover { background: var(--surface-2); color: var(--text-1); }
+.sidebar-link.active { background: var(--sidebar-active); color: var(--primary); }
+.sidebar-link svg { width: 20px; height: 20px; flex-shrink: 0; }
+.sidebar-footer { padding: 8px 12px; border-top: 1px solid var(--border); }
+
+/* Cards & Components */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.stat-card {
+  padding: 20px; display: flex; align-items: flex-start; gap: 14px;
+  transition: all 0.2s; cursor: pointer;
+}
+.stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.stat-icon {
+  padding: 8px; border-radius: 8px; flex-shrink: 0; display: flex;
+  align-items: center; justify-content: center;
+}
+.stat-icon svg { width: 18px; height: 18px; }
+.stat-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-2); margin-bottom: 4px;
+}
+.stat-value {
+  font-family: var(--font-display); font-size: 26px; line-height: 1;
+  letter-spacing: -0.02em;
+}
+.stat-change { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.stat-change svg { width: 12px; height: 12px; }
+.stat-change span { font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
+
+/* Grid */
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: 1.8fr 1fr; gap: 16px; }
+.grid-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 768px) { .grid-3, .grid-2, .grid-cols-2 { grid-template-columns: 1fr; } }
+
+/* Net Worth Banner */
+.networth-banner {
+  padding: 24px; border-radius: 12px; margin-bottom: 20px;
+  border: 2px solid rgba(44,110,73,0.25); background: var(--primary-light);
+  display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; transition: box-shadow 0.2s;
+}
+.networth-banner:hover { box-shadow: 0 4px 16px rgba(44,110,73,0.15); }
+.networth-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-2); margin-bottom: 8px;
+}
+.networth-value {
+  font-family: var(--font-display); font-size: 42px; line-height: 1;
+  letter-spacing: -0.02em; color: var(--primary);
+}
+
+/* Tables */
+.table-container { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; padding: 10px 14px; font-family: var(--font-mono);
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-2); border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+th.right, td.right { text-align: right; }
+td {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  font-weight: 500; color: var(--text-1);
+}
+tr:hover td { background: var(--surface-2); }
+.mono { font-family: var(--font-mono); }
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 3px;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+}
+.badge-green { background: var(--primary-light); color: var(--primary); }
+.badge-blue { background: var(--blue-light); color: var(--blue); }
+.badge-red { background: var(--red-light); color: var(--red); }
+.badge-amber { background: var(--amber-light); color: var(--amber); }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;
+  border-radius: 8px; font-size: 13px; font-weight: 500; border: none;
+  cursor: pointer; transition: all 0.15s; font-family: var(--font-sans);
+}
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-outline {
+  background: var(--card); color: var(--text-1);
+  border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.btn-outline:hover { background: var(--surface-2); }
+.btn-danger { background: var(--red); color: white; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-icon {
+  padding: 6px; border-radius: 6px; background: none; border: none;
+  color: var(--text-3); cursor: pointer;
+}
+.btn-icon:hover { background: var(--surface-2); color: var(--text-1); }
+
+/* Forms */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block; margin-bottom: 6px; font-size: 13px;
+  font-weight: 500; color: var(--text-2);
+}
+.form-input, .form-select {
+  width: 100%; padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: 8px; font-size: 14px; font-family: var(--font-sans);
+  background: var(--card); color: var(--text-1); transition: border-color 0.15s;
+}
+.form-input:focus, .form-select:focus {
+  outline: none; border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(44,110,73,0.15);
+}
+
+/* Modal */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 100; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--card); border-radius: 16px; width: 100%; max-width: 540px;
+  max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.modal-header {
+  padding: 20px 24px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-header h3 { font-size: 18px; font-weight: 600; }
+.modal-body { padding: 24px; }
+.modal-footer {
+  padding: 16px 24px; border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+
+/* Progress Bar */
+.progress-bar {
+  height: 6px; background: var(--border); border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%; background: var(--primary); border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+/* Tabs */
+.tab-group { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+.tab-btn {
+  padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  border: none; cursor: pointer; transition: all 0.15s;
+  font-family: var(--font-sans);
+  background: var(--surface-2); color: var(--text-2);
+}
+.tab-btn.active { background: var(--primary); color: white; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+/* Upload area */
+.upload-area {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 40px;
+  text-align: center; cursor: pointer; transition: all 0.2s;
+}
+.upload-area:hover { border-color: var(--primary); background: var(--primary-light); }
+.upload-area input { display: none; }
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; padding: 12px 20px;
+  background: var(--text-1); color: var(--bg); border-radius: 10px;
+  font-size: 13px; font-weight: 500; z-index: 200; transform: translateY(100px);
+  opacity: 0; transition: all 0.3s ease;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+
+/* Health Score */
+.health-ring {
+  width: 140px; height: 140px; position: relative;
+}
+.health-ring svg { transform: rotate(-90deg); }
+.health-ring .value {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.health-ring .score { font-family: var(--font-display); font-size: 32px; }
+.health-ring .label { font-size: 10px; color: var(--text-3); text-transform: uppercase; }
+
+/* Misc */
+.text-primary { color: var(--primary); }
+.text-red { color: var(--red); }
+.text-amber { color: var(--amber); }
+.text-muted { color: var(--text-2); }
+.text-xs { font-size: 11px; }
+.text-sm { font-size: 13px; }
+.font-mono { font-family: var(--font-mono); }
+.font-display { font-family: var(--font-display); }
+.mb-4 { margin-bottom: 16px; }
+.mb-6 { margin-bottom: 24px; }
+.mt-2 { margin-top: 8px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hidden { display: none !important; }
+.section-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+.section-sub { font-size: 13px; color: var(--text-2); margin-bottom: 16px; }
+.empty-state {
+  text-align: center; padding: 48px 24px; color: var(--text-3);
+}
+.empty-state svg { width: 48px; height: 48px; margin: 0 auto 12px; opacity: 0.4; }
+.empty-state p { font-size: 14px; margin-bottom: 16px; }
+
+.inline-edit { 
+  background: none; border: none; border-bottom: 1px dashed var(--border);
+  font-family: inherit; font-size: inherit; color: inherit; padding: 2px 0;
+  cursor: text;
+}
+.inline-edit:focus { outline: none; border-color: var(--primary); }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span>💰 WealthPulse</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="sidebar-section">
+        <div class="sidebar-label">Overview</div>
+        <button class="sidebar-link active" data-page="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+          Dashboard
+        </button>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Wealth</div>
+        <button class="sidebar-link" data-page="assets">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
+          Assets
+        </button>
+        <button class="sidebar-link" data-page="liabilities">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+          Liabilities
+        </button>
+        <button class="sidebar-link" data-page="networth">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
+          Net Worth
+        </button>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Plan</div>
+        <button class="sidebar-link" data-page="essentials">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
+          Essentials
+        </button>
+        <button class="sidebar-link" data-page="goals">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+          Goals
+        </button>
+        <button class="sidebar-link" data-page="allocation">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/></svg>
+          Allocation
+        </button>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Money</div>
+        <button class="sidebar-link" data-page="income">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Income
+        </button>
+        <button class="sidebar-link" data-page="expenses">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+          Expenses
+        </button>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Data</div>
+        <button class="sidebar-link" data-page="import">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+          Import Data
+        </button>
+        <button class="sidebar-link" data-page="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          Settings
+        </button>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="sidebar-link" id="darkToggleSidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+        Dark Mode
+      </button>
+    </div>
+  </aside>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- Mobile Header -->
+  <div class="mobile-header">
+    <div class="flex items-center gap-3">
+      <button class="btn-icon" id="menuBtn">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
+      </button>
+      <span class="font-display" style="font-size:18px;color:var(--primary)">💰 WealthPulse</span>
+    </div>
+    <button class="btn-icon" id="darkToggleMobile">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+    </button>
+  </div>
+
+  <!-- Main Area -->
+  <div class="main-area">
+    <div class="topbar">
+      <div></div>
+      <div class="flex items-center gap-2">
+        <button class="btn-icon" id="darkToggleTop">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+        </button>
+        <button class="btn btn-sm btn-outline" onclick="exportAllData()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
+
+    <main class="content">
+      <!-- All pages rendered here by JS -->
+      <div id="page-container"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalContent">
+    <div class="modal-header">
+      <h3 id="modalTitle">Modal</h3>
+      <button class="btn-icon" onclick="closeModal()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ DATA STORE ============
+const DB_KEY = 'wealthpulse_data';
+const defaultData = {
+  assets: [],
+  liabilities: [],
+  goals: [],
+  income: [],
+  expenses: [],
+  snapshots: [],
+  essentials: { termInsurance: 0, healthInsurance: 0, emergencyFund: 0, dependents: 0 },
+  targetAllocation: { Equity: 60, Debt: 20, Gold: 10, Cash: 5, International: 5 },
+  settings: { currency: 'INR', name: 'User' }
+};
+
+function loadData() {
+  try { return { ...defaultData, ...JSON.parse(localStorage.getItem(DB_KEY) || '{}') }; }
+  catch { return { ...defaultData }; }
+}
+function saveData(data) { localStorage.setItem(DB_KEY, JSON.stringify(data)); }
+let APP = loadData();
+
+// ============ HELPERS ============
+const fmt = (n) => {
+  n = Number(n) || 0;
+  if (Math.abs(n) >= 10000000) return '₹' + (n/10000000).toFixed(1) + 'Cr';
+  if (Math.abs(n) >= 100000) return '₹' + (n/100000).toFixed(1) + 'L';
+  if (Math.abs(n) >= 1000) return '₹' + (n/1000).toFixed(1) + 'K';
+  return '₹' + n.toLocaleString('en-IN');
+};
+const fmtFull = (n) => '₹' + (Number(n)||0).toLocaleString('en-IN', {maximumFractionDigits:0});
+const pct = (n) => (Number(n)||0).toFixed(1) + '%';
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const today = () => new Date().toISOString().split('T')[0];
+const monthStr = (d) => new Date(d).toLocaleDateString('en-IN', { month:'short', year:'2-digit' });
+
+function getTotalAssets() { return APP.assets.reduce((s,a) => s + (Number(a.currentValue)||Number(a.investedValue)||0), 0); }
+function getTotalLiabilities() { return APP.liabilities.reduce((s,l) => s + (Number(l.outstanding)||0), 0); }
+function getNetWorth() { return getTotalAssets() - getTotalLiabilities(); }
+
+function getAssetsByCategory() {
+  const cats = {};
+  APP.assets.forEach(a => {
+    const cat = a.category || 'Other';
+    cats[cat] = (cats[cat]||0) + (Number(a.currentValue)||Number(a.investedValue)||0);
+  });
+  return cats;
+}
+
+function getTotalInvested() { return APP.assets.reduce((s,a) => s + (Number(a.investedValue)||0), 0); }
+function getTotalCurrentValue() { return APP.assets.reduce((s,a) => s + (Number(a.currentValue)||Number(a.investedValue)||0), 0); }
+function getTotalGainLoss() { return getTotalCurrentValue() - getTotalInvested(); }
+
+// ============ TOAST ============
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ============ MODAL ============
+function openModal(title, bodyHtml, footerHtml='') {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHtml;
+  document.getElementById('modalFooter').innerHTML = footerHtml;
+  document.getElementById('modalOverlay').classList.add('active');
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+
+// ============ NAVIGATION ============
+let currentPage = 'dashboard';
+function navigate(page) {
+  currentPage = page;
+  document.querySelectorAll('.sidebar-link[data-page]').forEach(l => {
+    l.classList.toggle('active', l.dataset.page === page);
+  });
+  renderPage();
+  // Close mobile sidebar
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+document.querySelectorAll('.sidebar-link[data-page]').forEach(l => {
+  l.addEventListener('click', () => navigate(l.dataset.page));
+});
+document.getElementById('menuBtn').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('open');
+});
+document.getElementById('sidebarOverlay').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.remove('open');
+});
+
+// ============ DARK MODE ============
+function toggleDark() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('wp_dark', document.documentElement.classList.contains('dark'));
+}
+if (localStorage.getItem('wp_dark') === 'true') document.documentElement.classList.add('dark');
+document.getElementById('darkToggleSidebar').addEventListener('click', toggleDark);
+document.getElementById('darkToggleMobile').addEventListener('click', toggleDark);
+document.getElementById('darkToggleTop').addEventListener('click', toggleDark);
+
+// ============ CHART COLORS ============
+const CHART_COLORS = ['#2C6E49','#1E4D8C','#CA8A04','#DC3545','#7C3AED','#0891B2','#EA580C','#64748B'];
+function getChartColor(i) { return CHART_COLORS[i % CHART_COLORS.length]; }
+
+// ============ PAGE RENDERERS ============
+function renderPage() {
+  const c = document.getElementById('page-container');
+  switch(currentPage) {
+    case 'dashboard': c.innerHTML = renderDashboard(); initDashboardCharts(); break;
+    case 'assets': c.innerHTML = renderAssets(); break;
+    case 'liabilities': c.innerHTML = renderLiabilities(); break;
+    case 'networth': c.innerHTML = renderNetWorth(); initNetWorthChart(); break;
+    case 'goals': c.innerHTML = renderGoals(); break;
+    case 'allocation': c.innerHTML = renderAllocation(); initAllocationChart(); break;
+    case 'income': c.innerHTML = renderIncome(); break;
+    case 'expenses': c.innerHTML = renderExpenses(); break;
+    case 'essentials': c.innerHTML = renderEssentials(); initHealthChart(); break;
+    case 'import': c.innerHTML = renderImport(); break;
+    case 'settings': c.innerHTML = renderSettings(); break;
+    default: c.innerHTML = '<div class="empty-state"><p>Page not found</p></div>';
+  }
+}
+
+// ---- DASHBOARD ----
+function renderDashboard() {
+  const nw = getNetWorth(); const ta = getTotalAssets(); const tl = getTotalLiabilities();
+  const inv = getTotalInvested(); const cur = getTotalCurrentValue();
+  const gl = getTotalGainLoss(); const glPct = inv > 0 ? (gl/inv*100) : 0;
+  const debtRatio = ta > 0 ? (tl/ta*100) : 0;
+  const lastSnap = APP.snapshots.length > 0 ? APP.snapshots[APP.snapshots.length-1] : null;
+  const prevSnap = APP.snapshots.length > 1 ? APP.snapshots[APP.snapshots.length-2] : null;
+  const snapChange = lastSnap && prevSnap ? lastSnap.netWorth - prevSnap.netWorth : 0;
+  const snapPct = prevSnap && prevSnap.netWorth ? (snapChange/prevSnap.netWorth*100) : 0;
+
+  const cats = getAssetsByCategory();
+  const topAssets = [...APP.assets].sort((a,b) => (Number(b.currentValue)||Number(b.investedValue)||0) - (Number(a.currentValue)||Number(a.investedValue)||0)).slice(0,5);
+
+  // Month income/expense
+  const now = new Date(); const cm = now.getMonth(); const cy = now.getFullYear();
+  const mInc = APP.income.filter(i => { const d = new Date(i.date); return d.getMonth()===cm && d.getFullYear()===cy; }).reduce((s,i) => s+Number(i.amount),0);
+  const mExp = APP.expenses.filter(i => { const d = new Date(i.date); return d.getMonth()===cm && d.getFullYear()===cy; }).reduce((s,i) => s+Number(i.amount),0);
+
+  return `
+  <div class="networth-banner" onclick="navigate('networth')">
+    <div>
+      <div class="networth-label">Net Worth · ₹ INR</div>
+      <div class="networth-value">${fmt(nw)}</div>
+      ${snapChange !== 0 ? `
+      <div class="stat-change" style="margin-top:12px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" style="width:14px;height:14px"><path d="${snapChange>=0?'M16 7h6v6':'M16 17h6v-6'}"/><path d="${snapChange>=0?'m22 7-8.5 8.5-5-5L2 17':'m22 17-8.5-8.5-5 5L2 7'}"/></svg>
+        <span class="mono text-primary" style="font-size:12px">${snapChange>=0?'+':''}${fmt(snapChange)} (${snapChange>=0?'+':''}${pct(snapPct)})</span>
+        <span style="font-size:11px;color:var(--text-3)">vs last snapshot</span>
+      </div>` : ''}
+    </div>
+    <div style="text-align:right">
+      <div class="mono" style="font-size:11px;color:var(--text-3)">${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</div>
+      <span class="text-primary" style="font-size:12px;font-weight:500">View history →</span>
+    </div>
+  </div>
+
+  <div class="grid-3 mb-6">
+    <div class="card stat-card" onclick="navigate('assets')">
+      <div class="stat-icon" style="background:var(--primary-light);color:var(--primary)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="M3 22h18"/><path d="M6 18v-7"/><path d="M11.12 2.198a2 2 0 0 1 1.76.006l7.866 3.847c.476.233.31.949-.22.949H3.474c-.53 0-.695-.716-.22-.949z"/></svg>
+      </div>
+      <div>
+        <div class="stat-label">Total Assets</div>
+        <div class="stat-value">${fmt(ta)}</div>
+        <div class="stat-change">
+          <svg viewBox="0 0 24 24" fill="none" stroke="${gl>=0?'var(--primary)':'var(--red)'}" stroke-width="2"><path d="${gl>=0?'M16 7h6v6':'M16 17h6v-6'}"/><path d="${gl>=0?'m22 7-8.5 8.5-5-5L2 17':'m22 17-8.5-8.5-5 5L2 7'}"/></svg>
+          <span class="mono" style="color:${gl>=0?'var(--primary)':'var(--red)'}">${gl>=0?'+':''}${pct(glPct)} gain</span>
+        </div>
+      </div>
+    </div>
+    <div class="card stat-card" onclick="navigate('liabilities')">
+      <div class="stat-icon" style="background:var(--red-light);color:var(--red)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+      </div>
+      <div>
+        <div class="stat-label">Total Liabilities</div>
+        <div class="stat-value text-red">${fmt(tl)}</div>
+        <div style="font-size:12px;color:var(--text-2);margin-top:6px">${APP.liabilities.length} active</div>
+      </div>
+    </div>
+    <div class="card stat-card" onclick="navigate('essentials')">
+      <div class="stat-icon" style="background:var(--amber-light);color:var(--amber)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="m19 8 3 8a5 5 0 0 1-6 0z"/><path d="M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1"/><path d="m5 8 3 8a5 5 0 0 1-6 0z"/><path d="M7 21h10"/></svg>
+      </div>
+      <div>
+        <div class="stat-label">Debt Ratio</div>
+        <div class="stat-value ${debtRatio>40?'text-red':debtRatio>25?'text-amber':'text-primary'}">${pct(debtRatio)}</div>
+        <div style="font-size:12px;color:var(--text-2);margin-top:6px">${debtRatio<25?'Healthy':'Watch this'}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2 mb-6">
+    <div class="card" style="padding:20px">
+      <div class="section-title">Net Worth Over Time</div>
+      <div class="section-sub">${APP.snapshots.length} snapshots recorded</div>
+      <div style="height:200px"><canvas id="nwDashChart"></canvas></div>
+    </div>
+    <div class="card" style="padding:20px">
+      <div class="section-title">Asset Allocation</div>
+      <div class="section-sub">By category</div>
+      <div style="height:200px"><canvas id="allocDashChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid-3 mb-6">
+    <div class="card" style="overflow:hidden">
+      <div style="padding:16px;display:flex;justify-content:space-between;align-items:center">
+        <div class="section-title" style="margin:0">Top Holdings</div>
+        <span class="text-primary text-sm" style="cursor:pointer" onclick="navigate('assets')">View all →</span>
+      </div>
+      <table>
+        <thead><tr><th>Asset</th><th>Class</th><th class="right">Value</th></tr></thead>
+        <tbody>
+          ${topAssets.length === 0 ? '<tr><td colspan="3" class="text-muted" style="text-align:center;padding:20px">No assets yet</td></tr>' : ''}
+          ${topAssets.map(a => `<tr>
+            <td class="truncate" style="max-width:160px">${a.name}</td>
+            <td><span class="badge badge-green">${a.subtype||a.category||'—'}</span></td>
+            <td class="right mono">${fmtFull(a.currentValue||a.investedValue)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="card" style="padding:20px">
+      <div class="flex justify-between items-center mb-4">
+        <div class="section-title" style="margin:0">Monthly Cashflow</div>
+        <span class="text-primary text-sm" style="cursor:pointer" onclick="navigate('income')">Details →</span>
+      </div>
+      <div style="margin-bottom:12px">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-sm text-muted">Income</span>
+          <span class="mono text-primary">${fmtFull(mInc)}</span>
+        </div>
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-sm text-muted">Expenses</span>
+          <span class="mono text-red">${fmtFull(mExp)}</span>
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+        <div class="flex justify-between items-center">
+          <span class="text-sm" style="font-weight:600">Savings</span>
+          <span class="mono" style="font-weight:600;color:${(mInc-mExp)>=0?'var(--primary)':'var(--red)'}">${fmtFull(mInc-mExp)}</span>
+        </div>
+        ${mInc > 0 ? `<div style="margin-top:8px;font-size:11px;color:var(--text-3)">Savings Rate: ${pct((mInc-mExp)/mInc*100)}</div>` : ''}
+      </div>
+    </div>
+    <div class="card" style="overflow:hidden">
+      <div style="padding:16px;display:flex;justify-content:space-between;align-items:center">
+        <div class="section-title" style="margin:0">Goals</div>
+        <span class="text-primary text-sm" style="cursor:pointer" onclick="navigate('goals')">Manage →</span>
+      </div>
+      ${APP.goals.length === 0 ? '<div class="empty-state" style="padding:20px"><p class="text-sm text-muted">No goals set yet</p></div>' :
+        APP.goals.slice(0,3).map(g => {
+          const prog = g.targetAmount > 0 ? Math.min(100, (g.currentValue||0)/g.targetAmount*100) : 0;
+          return `<div style="padding:8px 16px 16px">
+            <div class="flex justify-between items-center mb-2">
+              <span style="font-size:13px;font-weight:500">${g.name}</span>
+              <span class="mono text-xs text-muted">${fmtFull(g.targetAmount)} by ${g.targetYear||'—'}</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:${prog}%"></div></div>
+            <div class="flex justify-between mono" style="font-size:10px;color:var(--text-3);margin-top:4px">
+              <span>${pct(prog)} complete</span>
+              <span>${fmtFull(g.currentValue||0)} of ${fmtFull(g.targetAmount)}</span>
+            </div>
+          </div>`;
+        }).join('')}
+    </div>
+  </div>
+
+  <div class="flex gap-2 mb-6">
+    <button class="btn btn-primary" onclick="takeSnapshot()">📸 Take Net Worth Snapshot</button>
+    <button class="btn btn-outline" onclick="navigate('import')">📥 Import Data</button>
+  </div>
+  `;
+}
+
+function initDashboardCharts() {
+  // Net Worth chart
+  const ctx1 = document.getElementById('nwDashChart');
+  if (ctx1 && APP.snapshots.length > 0) {
+    new Chart(ctx1, {
+      type: 'line',
+      data: {
+        labels: APP.snapshots.map(s => monthStr(s.date)),
+        datasets: [{
+          data: APP.snapshots.map(s => s.netWorth),
+          borderColor: getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#2C6E49',
+          backgroundColor: 'rgba(44,110,73,0.1)',
+          fill: true, tension: 0.4, pointRadius: 4, borderWidth: 2.5
+        }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } }, y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => fmt(v) } } } }
+    });
+  }
+  // Allocation chart
+  const ctx2 = document.getElementById('allocDashChart');
+  if (ctx2) {
+    const cats = getAssetsByCategory();
+    const keys = Object.keys(cats);
+    if (keys.length > 0) {
+      new Chart(ctx2, {
+        type: 'doughnut',
+        data: {
+          labels: keys,
+          datasets: [{ data: keys.map(k => cats[k]), backgroundColor: keys.map((_,i) => getChartColor(i)), borderWidth: 0 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '65%',
+          plugins: { legend: { position: 'right', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } } }
+      });
+    }
+  }
+}
+
+// ---- ASSETS ----
+function renderAssets() {
+  const cats = ['All', ...new Set(APP.assets.map(a => a.category||'Other'))];
+  return `
+  <div class="flex justify-between items-center mb-6" style="flex-wrap:wrap;gap:12px">
+    <div>
+      <h1 class="font-display" style="font-size:28px">Assets</h1>
+      <p class="text-sm text-muted mt-2">${APP.assets.length} assets · Invested: ${fmtFull(getTotalInvested())} · Current: ${fmtFull(getTotalCurrentValue())}</p>
+    </div>
+    <div class="flex gap-2">
+      <button class="btn btn-outline btn-sm" onclick="navigate('import')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+        Import
+      </button>
+      <button class="btn btn-primary btn-sm" onclick="openAssetModal()">+ Add Asset</button>
+    </div>
+  </div>
+  <div class="flex justify-between items-center" style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px">
+    <span class="mono text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em">TOTAL ASSETS</span>
+    <span class="mono" style="font-size:18px;font-weight:600">${fmtFull(getTotalAssets())}</span>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <div class="table-container">
+      <table>
+        <thead><tr>
+          <th>Name</th><th>Category</th><th>Sub-type</th>
+          <th class="right">Invested</th><th class="right">Current</th><th class="right">Gain/Loss</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${APP.assets.length === 0 ? '<tr><td colspan="7"><div class="empty-state"><p>No assets yet. Add your first asset or import from CSV.</p></div></td></tr>' : ''}
+          ${APP.assets.map(a => {
+            const cv = Number(a.currentValue)||Number(a.investedValue)||0;
+            const iv = Number(a.investedValue)||0;
+            const gl = cv - iv;
+            return `<tr>
+              <td class="truncate" style="max-width:220px;font-weight:500">${a.name}</td>
+              <td><span class="badge ${a.category==='Equity'?'badge-blue':a.category==='Debt'?'badge-green':a.category==='Gold'?'badge-amber':'badge-green'}">${a.category||'—'}</span></td>
+              <td class="text-muted text-sm">${a.subtype||'—'}</td>
+              <td class="right mono">${fmtFull(iv)}</td>
+              <td class="right mono" style="font-weight:600">${fmtFull(cv)}</td>
+              <td class="right mono" style="color:${gl>=0?'var(--primary)':'var(--red)'}">${gl>=0?'+':''}${fmtFull(gl)}</td>
+              <td style="white-space:nowrap">
+                <button class="btn-icon" onclick="openAssetModal('${a.id}')" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>
+                <button class="btn-icon" onclick="deleteAsset('${a.id}')" title="Delete" style="color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function openAssetModal(id) {
+  const a = id ? APP.assets.find(x => x.id === id) : null;
+  const categories = ['Equity','Debt','Gold','Cash','International','Real Estate','Crypto','EPF','NPS','FD','RD','Bond','Other'];
+  const subtypes = ['Mutual Fund','Stock','ETF','Gold ETF','Gold Physical','Gold MF','US Stock','Liquid','Arbitrage','Savings','Index Fund','Direct Equity','Other'];
+  openModal(a ? 'Edit Asset' : 'Add Asset', `
+    <div class="form-group">
+      <label class="form-label">Asset Name *</label>
+      <input class="form-input" id="assetName" value="${a?a.name:''}" placeholder="e.g., Parag Parikh Flexi Cap Fund">
+    </div>
+    <div class="grid-cols-2">
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <select class="form-select" id="assetCategory">
+          ${categories.map(c => `<option value="${c}" ${a&&a.category===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sub-type</label>
+        <select class="form-select" id="assetSubtype">
+          ${subtypes.map(s => `<option value="${s}" ${a&&a.subtype===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="grid-cols-2">
+      <div class="form-group">
+        <label class="form-label">Invested Value (₹)</label>
+        <input class="form-input" id="assetInvested" type="number" value="${a?a.investedValue:''}" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Current Value (₹)</label>
+        <input class="form-input" id="assetCurrent" type="number" value="${a?a.currentValue:''}" placeholder="0">
+      </div>
+    </div>
+    <div class="grid-cols-2">
+      <div class="form-group">
+        <label class="form-label">Units/Quantity</label>
+        <input class="form-input" id="assetUnits" type="number" step="0.001" value="${a?a.units||'':''}" placeholder="Optional">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Ticker/Code</label>
+        <input class="form-input" id="assetTicker" value="${a?a.ticker||'':''}" placeholder="e.g., TCS.NS">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <input class="form-input" id="assetNotes" value="${a?a.notes||'':''}" placeholder="Optional notes">
+    </div>
+  `, `
+    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveAsset('${id||''}')">${a?'Update':'Add'} Asset</button>
+  `);
+}
+
+function saveAsset(id) {
+  const name = document.getElementById('assetName').value.trim();
+  if (!name) return showToast('Please enter asset name');
+  const data = {
+    id: id || uid(), name,
+    category: document.getElementById('assetCategory').value,
+    subtype: document.getElementById('assetSubtype').value,
+    investedValue: Number(document.getElementById('assetInvested').value) || 0,
+    currentValue: Number(document.getElementById('assetCurrent').value) || 0,
+    units: Number(document.getElementById('assetUnits').value) || 0,
+    ticker: document.getElementById('assetTicker').value.trim(),
+    notes: document.getElementById('assetNotes').value.trim(),
+    updatedAt: today()
+  };
+  if (id) { const i = APP.assets.findIndex(a => a.id === id); if (i>=0) APP.assets[i] = {...APP.assets[i], ...data}; }
+  else APP.assets.push(data);
+  saveData(APP); closeModal(); renderPage(); showToast(id ? 'Asset updated' : 'Asset added');
+}
+
+function deleteAsset(id) {
+  if (!confirm('Delete this asset?')) return;
+  APP.assets = APP.assets.filter(a => a.id !== id);
+  saveData(APP); renderPage(); showToast('Asset deleted');
+}
+
+// ---- LIABILITIES ----
+function renderLiabilities() {
+  return `
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="font-display" style="font-size:28px">Liabilities</h1>
+      <p class="text-sm text-muted mt-2">Track your debts</p>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openLiabilityModal()">+ Add Liability</button>
+  </div>
+  <div class="flex justify-between items-center" style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px">
+    <span class="mono text-muted" style="font-size:12px;text-transform:uppercase">TOTAL LIABILITIES</span>
+    <span class="mono text-red" style="font-size:18px;font-weight:600">${fmtFull(getTotalLiabilities())}</span>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>Name</th><th>Type</th><th class="right">Outstanding</th><th class="right">Rate</th><th class="right">Monthly EMI</th><th></th></tr></thead>
+      <tbody>
+        ${APP.liabilities.length === 0 ? '<tr><td colspan="6"><div class="empty-state"><p>No liabilities. That\'s great!</p></div></td></tr>' : ''}
+        ${APP.liabilities.map(l => `<tr>
+          <td style="font-weight:500">${l.name}</td>
+          <td><span class="badge badge-green">${l.type||'Loan'}</span></td>
+          <td class="right mono text-red" style="font-weight:500">${fmtFull(l.outstanding)}</td>
+          <td class="right mono text-muted">${l.rate?pct(l.rate):'—'}</td>
+          <td class="right mono text-muted">${l.emi?fmtFull(l.emi):'—'}</td>
+          <td>
+            <button class="btn-icon" onclick="openLiabilityModal('${l.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>
+            <button class="btn-icon" onclick="deleteLiability('${l.id}')" style="color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function openLiabilityModal(id) {
+  const l = id ? APP.liabilities.find(x => x.id === id) : null;
+  const types = ['Home Loan','Car Loan','Education Loan','Personal Loan','Credit Card','Gold Loan','Other'];
+  openModal(l ? 'Edit Liability' : 'Add Liability', `
+    <div class="form-group"><label class="form-label">Name *</label><input class="form-input" id="liabName" value="${l?l.name:''}" placeholder="e.g., Home Loan"></div>
+    <div class="form-group"><label class="form-label">Type</label><select class="form-select" id="liabType">${types.map(t => `<option ${l&&l.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+    <div class="grid-cols-2">
+      <div class="form-group"><label class="form-label">Outstanding (₹)</label><input class="form-input" id="liabOut" type="number" value="${l?l.outstanding:''}"></div>
+      <div class="form-group"><label class="form-label">Interest Rate (%)</label><input class="form-input" id="liabRate" type="number" step="0.1" value="${l?l.rate:''}"></div>
+    </div>
+    <div class="grid-cols-2">
+      <div class="form-group"><label class="form-label">Monthly EMI (₹)</label><input class="form-input" id="liabEmi" type="number" value="${l?l.emi:''}"></div>
+      <div class="form-group"><label class="form-label">Tenure (months)</label><input class="form-input" id="liabTenure" type="number" value="${l?l.tenure:''}"></div>
+    </div>
+  `, `
+    <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" onclick="saveLiability('${id||''}')">${l?'Update':'Add'}</button>
+  `);
+}
+
+function saveLiability(id) {
+  const name = document.getElementById('liabName').value.trim();
+  if (!name) return showToast('Please enter name');
+  const data = { id: id||uid(), name, type: document.getElementById('liabType').value,
+    outstanding: Number(document.getElementById('liabOut').value)||0,
+    rate: Number(document.getElementById('liabRate').value)||0,
+    emi: Number(document.getElementById('liabEmi').value)||0,
+    tenure: Number(document.getElementById('liabTenure').value)||0 };
+  if (id) { const i = APP.liabilities.findIndex(l => l.id===id); if(i>=0) APP.liabilities[i] = data; }
+  else APP.liabilities.push(data);
+  saveData(APP); closeModal(); renderPage(); showToast(id?'Updated':'Added');
+}
+function deleteLiability(id) { if(!confirm('Delete?')) return; APP.liabilities = APP.liabilities.filter(l=>l.id!==id); saveData(APP); renderPage(); showToast('Deleted'); }
+
+// ---- NET WORTH ----
+function renderNetWorth() {
+  return `
+  <h1 class="font-display" style="font-size:28px">Net Worth History</h1>
+  <p class="text-sm text-muted mt-2 mb-6">${APP.snapshots.length} snapshots recorded</p>
+  <div class="card" style="padding:20px;margin-bottom:20px">
+    <div style="height:300px"><canvas id="nwChart"></canvas></div>
+  </div>
+  <div class="flex gap-2 mb-6">
+    <button class="btn btn-primary" onclick="takeSnapshot()">📸 Take Snapshot Now</button>
+  </div>
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>Date</th><th class="right">Assets</th><th class="right">Liabilities</th><th class="right">Net Worth</th><th class="right">Change</th><th></th></tr></thead>
+      <tbody>
+        ${[...APP.snapshots].reverse().map((s,i,arr) => {
+          const prev = arr[i+1];
+          const change = prev ? s.netWorth - prev.netWorth : 0;
+          return `<tr>
+            <td class="mono">${new Date(s.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</td>
+            <td class="right mono">${fmtFull(s.assets)}</td>
+            <td class="right mono text-red">${fmtFull(s.liabilities)}</td>
+            <td class="right mono" style="font-weight:600">${fmtFull(s.netWorth)}</td>
+            <td class="right mono" style="color:${change>=0?'var(--primary)':'var(--red)'}">${change!==0?(change>0?'+':'')+fmtFull(change):'—'}</td>
+            <td><button class="btn-icon" onclick="deleteSnapshot(${APP.snapshots.indexOf(s)})" style="color:var(--red)" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function initNetWorthChart() {
+  const ctx = document.getElementById('nwChart');
+  if (!ctx || APP.snapshots.length === 0) return;
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: APP.snapshots.map(s => monthStr(s.date)),
+      datasets: [
+        { label: 'Net Worth', data: APP.snapshots.map(s => s.netWorth), borderColor: '#2C6E49', backgroundColor: 'rgba(44,110,73,0.1)', fill: true, tension: 0.4, borderWidth: 2.5 },
+        { label: 'Assets', data: APP.snapshots.map(s => s.assets), borderColor: '#1E4D8C', borderDash: [5,3], tension: 0.4, borderWidth: 1.5, pointRadius: 2 },
+        { label: 'Liabilities', data: APP.snapshots.map(s => s.liabilities), borderColor: '#DC3545', borderDash: [5,3], tension: 0.4, borderWidth: 1.5, pointRadius: 2 }
+      ]
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: { x: { grid: { display: false } }, y: { ticks: { callback: v => fmt(v) } } } }
+  });
+}
+
+function takeSnapshot() {
+  const snap = { date: today(), assets: getTotalAssets(), liabilities: getTotalLiabilities(), netWorth: getNetWorth(), allocation: getAssetsByCategory() };
+  APP.snapshots.push(snap);
+  saveData(APP); renderPage(); showToast('✅ Snapshot saved!');
+}
+
+function deleteSnapshot(i) {
+  if (!confirm('Delete this snapshot?')) return;
+  APP.snapshots.splice(i, 1);
+  saveData(APP); renderPage(); showToast('Snapshot deleted');
+}
+
+// ---- GOALS ----
+function renderGoals() {
+  return `
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="font-display" style="font-size:28px">Financial Goals</h1>
+      <p class="text-sm text-muted mt-2">Track progress towards your goals</p>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openGoalModal()">+ Add Goal</button>
+  </div>
+  ${APP.goals.length === 0 ? '<div class="card"><div class="empty-state"><p>No goals yet. Set your first financial goal!</p><button class="btn btn-primary" onclick="openGoalModal()">Create Goal</button></div></div>' :
+    APP.goals.map(g => {
+      const inflAdj = g.inflation > 0 ? g.targetAmount * Math.pow(1+g.inflation/100, (g.targetYear||2030) - new Date().getFullYear()) : g.targetAmount;
+      const prog = inflAdj > 0 ? Math.min(100, (g.currentValue||0)/inflAdj*100) : 0;
+      const gap = Math.max(0, inflAdj - (g.currentValue||0));
+      return `<div class="card mb-4" style="padding:20px">
+        <div class="flex justify-between items-center mb-2">
+          <h3 style="font-size:16px;font-weight:600">${g.name}</h3>
+          <div class="flex gap-2">
+            <button class="btn-icon" onclick="openGoalModal('${g.id}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>
+            <button class="btn-icon" onclick="deleteGoal('${g.id}')" style="color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          </div>
+        </div>
+        <div class="flex gap-3 text-sm text-muted mb-4" style="flex-wrap:wrap">
+          <span>🎯 Target: ${fmtFull(g.targetAmount)}</span>
+          <span>📅 By: ${g.targetYear||'—'}</span>
+          ${g.inflation ? `<span>📈 Inflation: ${g.inflation}%</span>` : ''}
+          ${g.inflation > 0 ? `<span>💰 Inflation-adj: ${fmtFull(Math.round(inflAdj))}</span>` : ''}
+        </div>
+        <div class="progress-bar" style="height:8px;margin-bottom:8px"><div class="progress-fill" style="width:${prog}%"></div></div>
+        <div class="flex justify-between mono" style="font-size:11px;color:var(--text-3)">
+          <span>${pct(prog)} complete · ${fmtFull(g.currentValue||0)} saved</span>
+          <span>Gap: ${fmtFull(Math.round(gap))}</span>
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+function openGoalModal(id) {
+  const g = id ? APP.goals.find(x => x.id === id) : null;
+  openModal(g?'Edit Goal':'Add Goal', `
+    <div class="form-group"><label class="form-label">Goal Name *</label><input class="form-input" id="goalName" value="${g?g.name:''}" placeholder="e.g., Retirement Fund"></div>
+    <div class="grid-cols-2">
+      <div class="form-group"><label class="form-label">Target Amount (₹)</label><input class="form-input" id="goalTarget" type="number" value="${g?g.targetAmount:''}"></div>
+      <div class="form-group"><label class="form-label">Current Value (₹)</label><input class="form-input" id="goalCurrent" type="number" value="${g?g.currentValue:''}"></div>
+    </div>
+    <div class="grid-cols-2">
+      <div class="form-group"><label class="form-label">Target Year</label><input class="form-input" id="goalYear" type="number" value="${g?g.targetYear:new Date().getFullYear()+5}" min="2024" max="2070"></div>
+      <div class="form-group"><label class="form-label">Inflation %</label><input class="form-input" id="goalInflation" type="number" step="0.5" value="${g?g.inflation||6:6}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Linked Asset (optional)</label><input class="form-input" id="goalLinked" value="${g?g.linkedAsset||'':''}" placeholder="Asset name to auto-track"></div>
+  `, `<button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveGoal('${id||''}')">${g?'Update':'Add'}</button>`);
+}
+
+function saveGoal(id) {
+  const name = document.getElementById('goalName').value.trim();
+  if (!name) return showToast('Enter goal name');
+  const data = { id: id||uid(), name, targetAmount: Number(document.getElementById('goalTarget').value)||0,
+    currentValue: Number(document.getElementById('goalCurrent').value)||0,
+    targetYear: Number(document.getElementById('goalYear').value)||2030,
+    inflation: Number(document.getElementById('goalInflation').value)||0,
+    linkedAsset: document.getElementById('goalLinked').value.trim() };
+  // Auto-link: find matching asset and update current value
+  if (data.linkedAsset) {
+    const match = APP.assets.find(a => a.name.toLowerCase().includes(data.linkedAsset.toLowerCase()));
+    if (match) data.currentValue = Number(match.currentValue) || Number(match.investedValue) || data.currentValue;
+  }
+  if (id) { const i = APP.goals.findIndex(g=>g.id===id); if(i>=0) APP.goals[i] = data; }
+  else APP.goals.push(data);
+  saveData(APP); closeModal(); renderPage(); showToast(id?'Updated':'Goal added');
+}
+function deleteGoal(id) { if(!confirm('Delete?')) return; APP.goals = APP.goals.filter(g=>g.id!==id); saveData(APP); renderPage(); showToast('Deleted'); }
+
+// ---- ALLOCATION ----
+function renderAllocation() {
+  const cats = getAssetsByCategory();
+  const total = Object.values(cats).reduce((s,v)=>s+v,0) || 1;
+  const allCats = [...new Set([...Object.keys(cats), ...Object.keys(APP.targetAllocation)])];
+  return `
+  <h1 class="font-display" style="font-size:28px">Asset Allocation</h1>
+  <p class="text-sm text-muted mt-2 mb-6">Current vs Target allocation</p>
+  <div class="grid-2 mb-6">
+    <div class="card" style="padding:20px">
+      <div class="section-title">Current Allocation</div>
+      <div style="height:280px"><canvas id="allocChart"></canvas></div>
+    </div>
+    <div class="card" style="padding:20px">
+      <div class="section-title mb-4">Target vs Actual</div>
+      ${allCats.map(cat => {
+        const actual = ((cats[cat]||0)/total*100);
+        const target = APP.targetAllocation[cat]||0;
+        const diff = actual - target;
+        return `<div style="margin-bottom:12px">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm" style="font-weight:500">${cat}</span>
+            <span class="mono text-xs">${pct(actual)} / ${pct(target)} target</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,actual)}%;background:${Math.abs(diff)>10?'var(--amber)':'var(--primary)'}"></div></div>
+          <div class="mono text-xs" style="color:${Math.abs(diff)>10?'var(--amber)':'var(--text-3)'};margin-top:2px">${diff>0?'Over':'Under'} by ${pct(Math.abs(diff))}</div>
+        </div>`;
+      }).join('')}
+      <button class="btn btn-outline btn-sm mt-2" onclick="editTargetAllocation()">✏️ Set Target Allocation</button>
+    </div>
+  </div>`;
+}
+
+function initAllocationChart() {
+  const ctx = document.getElementById('allocChart');
+  if (!ctx) return;
+  const cats = getAssetsByCategory();
+  const keys = Object.keys(cats);
+  if (keys.length === 0) return;
+  new Chart(ctx, {
+    type: 'doughnut',
+    data: { labels: keys, datasets: [{ data: keys.map(k=>cats[k]), backgroundColor: keys.map((_,i)=>getChartColor(i)), borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '60%',
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10, font: { size: 12 } } } } }
+  });
+}
+
+function editTargetAllocation() {
+  const cats = ['Equity','Debt','Gold','Cash','International','Real Estate','Crypto','Other'];
+  openModal('Set Target Allocation', cats.map(c => `
+    <div class="form-group"><label class="form-label">${c} (%)</label>
+    <input class="form-input" id="target_${c}" type="number" value="${APP.targetAllocation[c]||0}" min="0" max="100"></div>
+  `).join(''), `<button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveTargetAllocation()">Save</button>`);
+}
+
+function saveTargetAllocation() {
+  ['Equity','Debt','Gold','Cash','International','Real Estate','Crypto','Other'].forEach(c => {
+    APP.targetAllocation[c] = Number(document.getElementById('target_'+c).value)||0;
+  });
+  saveData(APP); closeModal(); renderPage(); showToast('Target allocation saved');
+}
+
+// ---- INCOME & EXPENSES ----
+function renderIncome() { return renderTransactions('income', 'Income', APP.income); }
+function renderExpenses() { return renderTransactions('expenses', 'Expenses', APP.expenses); }
+
+function renderTransactions(type, title, items) {
+  const now = new Date(); const cm = now.getMonth(); const cy = now.getFullYear();
+  const monthItems = items.filter(i => { const d = new Date(i.date); return d.getMonth()===cm && d.getFullYear()===cy; });
+  const monthTotal = monthItems.reduce((s,i) => s+Number(i.amount),0);
+  const categories = type==='income' ? ['Salary','Freelance','Investment','Rental','Gift','Other'] : ['Food','Transport','Housing','Utilities','Shopping','Health','Education','Entertainment','Travel','Insurance','EMI','Other'];
+  const catTotals = {};
+  monthItems.forEach(i => { catTotals[i.category||'Other'] = (catTotals[i.category||'Other']||0) + Number(i.amount); });
+
+  return `
+  <div class="flex justify-between items-center mb-6">
+    <div>
+      <h1 class="font-display" style="font-size:28px">${title}</h1>
+      <p class="text-sm text-muted mt-2">This month: ${fmtFull(monthTotal)}</p>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openTransactionModal('${type}')">+ Add ${title}</button>
+  </div>
+  ${Object.keys(catTotals).length > 0 ? `
+  <div class="card mb-4" style="padding:16px">
+    <div class="section-title mb-4">Category Breakdown</div>
+    ${Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).map(([cat,amt]) => `
+      <div class="flex justify-between items-center mb-2">
+        <span class="text-sm">${cat}</span>
+        <div class="flex items-center gap-2">
+          <div style="width:100px;height:6px;background:var(--border);border-radius:3px"><div style="width:${monthTotal>0?amt/monthTotal*100:0}%;height:100%;background:var(--primary);border-radius:3px"></div></div>
+          <span class="mono text-sm">${fmtFull(amt)}</span>
+        </div>
+      </div>
+    `).join('')}
+  </div>` : ''}
+  <div class="card" style="overflow:hidden">
+    <table>
+      <thead><tr><th>Date</th><th>Description</th><th>Category</th><th class="right">Amount</th><th></th></tr></thead>
+      <tbody>
+        ${items.length === 0 ? `<tr><td colspan="5"><div class="empty-state"><p>No ${title.toLowerCase()} recorded yet</p></div></td></tr>` : ''}
+        ${[...items].reverse().slice(0,50).map(i => `<tr>
+          <td class="mono text-sm">${new Date(i.date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}</td>
+          <td>${i.description||'—'}</td>
+          <td><span class="badge ${type==='income'?'badge-green':'badge-red'}">${i.category||'—'}</span></td>
+          <td class="right mono" style="font-weight:500;color:${type==='income'?'var(--primary)':'var(--red)'}">${fmtFull(i.amount)}</td>
+          <td><button class="btn-icon" onclick="deleteTransaction('${type}','${i.id}')" style="color:var(--red)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function openTransactionModal(type) {
+  const cats = type==='income' ? ['Salary','Freelance','Investment','Rental','Gift','Other'] : ['Food','Transport','Housing','Utilities','Shopping','Health','Education','Entertainment','Travel','Insurance','EMI','Other'];
+  openModal(`Add ${type==='income'?'Income':'Expense'}`, `
+    <div class="form-group"><label class="form-label">Amount (₹) *</label><input class="form-input" id="txnAmount" type="number"></div>
+    <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="txnDesc" placeholder="What was this for?"></div>
+    <div class="grid-cols-2">
+      <div class="form-group"><label class="form-label">Category</label><select class="form-select" id="txnCat">${cats.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="txnDate" type="date" value="${today()}"></div>
+    </div>
+  `, `<button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveTransaction('${type}')">Save</button>`);
+}
+
+function saveTransaction(type) {
+  const amount = Number(document.getElementById('txnAmount').value);
+  if (!amount) return showToast('Enter amount');
+  const data = { id: uid(), amount, description: document.getElementById('txnDesc').value.trim(),
+    category: document.getElementById('txnCat').value, date: document.getElementById('txnDate').value || today() };
+  APP[type].push(data);
+  saveData(APP); closeModal(); renderPage(); showToast('Saved');
+}
+
+function deleteTransaction(type, id) {
+  APP[type] = APP[type].filter(t => t.id !== id);
+  saveData(APP); renderPage(); showToast('Deleted');
+}
+
+// ---- ESSENTIALS ----
+function renderEssentials() {
+  const e = APP.essentials;
+  const monthlyExp = (() => {
+    const now = new Date(); const cm = now.getMonth(); const cy = now.getFullYear();
+    return APP.expenses.filter(i => { const d = new Date(i.date); return d.getMonth()===cm && d.getFullYear()===cy; }).reduce((s,i) => s+Number(i.amount),0) || 30000;
+  })();
+  const emergencyMonths = monthlyExp > 0 ? Math.floor(e.emergencyFund / monthlyExp) : 0;
+  const score = calculateHealthScore();
+
+  return `
+  <h1 class="font-display" style="font-size:28px">Financial Essentials</h1>
+  <p class="text-sm text-muted mt-2 mb-6">Protection & preparedness check</p>
+  <div class="grid-2 mb-6">
+    <div class="card" style="padding:24px;text-align:center">
+      <div class="section-title mb-4">Financial Health Score</div>
+      <div style="display:flex;justify-content:center;margin-bottom:16px">
+        <div class="health-ring">
+          <svg width="140" height="140" viewBox="0 0 140 140">
+            <circle cx="70" cy="70" r="56" fill="none" stroke="var(--border)" stroke-width="12"/>
+            <circle id="healthArc" cx="70" cy="70" r="56" fill="none" stroke="${score>=70?'var(--primary)':score>=40?'var(--amber)':'var(--red)'}" stroke-width="12"
+              stroke-dasharray="${score/100*351.86} 351.86" stroke-linecap="round"/>
+          </svg>
+          <div class="value">
+            <div class="score" style="color:${score>=70?'var(--primary)':score>=40?'var(--amber)':'var(--red)'}">${score}</div>
+            <div class="label">out of 100</div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size:14px;font-weight:500;color:${score>=70?'var(--primary)':score>=40?'var(--amber)':'var(--red)'}">${score>=70?'✅ Good Shape':score>=40?'⚠️ Needs Attention':'🚨 Urgent Action Needed'}</div>
+    </div>
+    <div class="card" style="padding:24px">
+      <div class="section-title mb-4">Key Metrics</div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Term Insurance</span><span class="mono">${fmtFull(e.termInsurance)}</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,e.termInsurance/5000000*100)}%;background:${e.termInsurance>=5000000?'var(--primary)':'var(--amber)'}"></div></div>
+          <div class="text-xs text-muted mt-1">Recommended: ₹50L+ (10x annual income)</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Health Insurance</span><span class="mono">${fmtFull(e.healthInsurance)}</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,e.healthInsurance/1000000*100)}%;background:${e.healthInsurance>=1000000?'var(--primary)':'var(--amber)'}"></div></div>
+          <div class="text-xs text-muted mt-1">Recommended: ₹10L+</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Emergency Fund</span><span class="mono">${fmtFull(e.emergencyFund)} (${emergencyMonths} months)</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${Math.min(100,emergencyMonths/6*100)}%;background:${emergencyMonths>=6?'var(--primary)':'var(--red)'}"></div></div>
+          <div class="text-xs text-muted mt-1">Recommended: 6 months expenses</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Dependents</span><span class="mono">${e.dependents}</span></div>
+        </div>
+      </div>
+      <button class="btn btn-outline btn-sm mt-2" style="margin-top:16px" onclick="editEssentials()">✏️ Update Details</button>
+    </div>
+  </div>`;
+}
+
+function calculateHealthScore() {
+  const e = APP.essentials; let score = 0;
+  if (e.termInsurance >= 5000000) score += 25; else if (e.termInsurance > 0) score += 10;
+  if (e.healthInsurance >= 1000000) score += 25; else if (e.healthInsurance > 0) score += 10;
+  const monthlyExp = 30000;
+  const emergencyMonths = monthlyExp > 0 ? e.emergencyFund / monthlyExp : 0;
+  if (emergencyMonths >= 6) score += 25; else if (emergencyMonths >= 3) score += 15; else if (emergencyMonths > 0) score += 5;
+  const debtRatio = getTotalAssets() > 0 ? getTotalLiabilities()/getTotalAssets()*100 : 0;
+  if (debtRatio < 20) score += 25; else if (debtRatio < 40) score += 15; else score += 5;
+  return Math.min(100, score);
+}
+
+function initHealthChart() {}
+
+function editEssentials() {
+  const e = APP.essentials;
+  openModal('Update Essentials', `
+    <div class="form-group"><label class="form-label">Term Insurance Cover (₹)</label><input class="form-input" id="essTerm" type="number" value="${e.termInsurance}"></div>
+    <div class="form-group"><label class="form-label">Health Insurance Cover (₹)</label><input class="form-input" id="essHealth" type="number" value="${e.healthInsurance}"></div>
+    <div class="form-group"><label class="form-label">Emergency Fund (₹)</label><input class="form-input" id="essEmergency" type="number" value="${e.emergencyFund}"></div>
+    <div class="form-group"><label class="form-label">Number of Dependents</label><input class="form-input" id="essDep" type="number" value="${e.dependents}"></div>
+  `, `<button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveEssentials()">Save</button>`);
+}
+
+function saveEssentials() {
+  APP.essentials = {
+    termInsurance: Number(document.getElementById('essTerm').value)||0,
+    healthInsurance: Number(document.getElementById('essHealth').value)||0,
+    emergencyFund: Number(document.getElementById('essEmergency').value)||0,
+    dependents: Number(document.getElementById('essDep').value)||0
+  };
+  saveData(APP); closeModal(); renderPage(); showToast('Essentials updated');
+}
+
+// ---- IMPORT ----
+function renderImport() {
+  return `
+  <h1 class="font-display" style="font-size:28px">Import Data</h1>
+  <p class="text-sm text-muted mt-2 mb-6">Import from CSV/Excel files</p>
+  
+  <div class="grid-cols-2 mb-6">
+    <div class="card" style="padding:24px">
+      <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">📊 Import Assets (MF/Stocks)</h3>
+      <p class="text-sm text-muted mb-4">Import mutual fund or stock holdings from broker CSV</p>
+      <div class="upload-area" onclick="document.getElementById('assetFileInput').click()">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" style="margin:0 auto 8px"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+        <p class="text-sm text-muted">Drop CSV/Excel file here or click to browse</p>
+        <p class="text-xs text-muted" style="margin-top:4px">Supported: .csv, .xlsx, .xls</p>
+        <input type="file" id="assetFileInput" accept=".csv,.xlsx,.xls" onchange="handleAssetImport(event)">
+      </div>
+      <div class="text-xs text-muted" style="margin-top:12px">
+        <strong>Expected columns:</strong> name/scheme, invested/amount, current_value, units, category
+      </div>
+    </div>
+    <div class="card" style="padding:24px">
+      <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">💰 Import Transactions</h3>
+      <p class="text-sm text-muted mb-4">Import income & expense records</p>
+      <div class="upload-area" onclick="document.getElementById('txnFileInput').click()">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" style="margin:0 auto 8px"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+        <p class="text-sm text-muted">Drop CSV/Excel file here or click to browse</p>
+        <input type="file" id="txnFileInput" accept=".csv,.xlsx,.xls" onchange="handleTxnImport(event)">
+      </div>
+      <div class="text-xs text-muted" style="margin-top:12px">
+        <strong>Expected columns:</strong> date, description, amount, category, type(income/expense)
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="padding:24px">
+    <h3 style="font-size:16px;font-weight:600;margin-bottom:8px">📦 Bulk Import / Restore</h3>
+    <p class="text-sm text-muted mb-4">Import a previously exported WealthPulse JSON backup</p>
+    <div class="flex gap-2">
+      <div class="upload-area" style="flex:1;padding:20px" onclick="document.getElementById('backupFileInput').click()">
+        <p class="text-sm text-muted">Click to import JSON backup</p>
+        <input type="file" id="backupFileInput" accept=".json" onchange="handleBackupImport(event)">
+      </div>
+    </div>
+  </div>`;
+}
+
+function handleAssetImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      let data;
+      if (file.name.endsWith('.csv')) {
+        data = parseCSV(e.target.result);
+      } else {
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      }
+      let imported = 0;
+      data.forEach(row => {
+        const name = row.name || row.scheme || row.Name || row.Scheme || row['Scheme Name'] || row['Fund Name'] || '';
+        if (!name) return;
+        // Check for duplicate
+        const existing = APP.assets.find(a => a.name.toLowerCase().trim() === name.toLowerCase().trim());
+        const invested = Number(row.invested || row.amount || row.Amount || row['Invested Value'] || row['Invested Amount'] || 0);
+        const current = Number(row.current_value || row.currentValue || row['Current Value'] || row['Market Value'] || 0);
+        const units = Number(row.units || row.Units || row.Quantity || 0);
+        const category = row.category || row.Category || row['Asset Class'] || 'Equity';
+        if (existing) {
+          // Consolidate: add values
+          existing.investedValue = (Number(existing.investedValue)||0) + invested;
+          existing.currentValue = (Number(existing.currentValue)||0) + (current || invested);
+          existing.units = (Number(existing.units)||0) + units;
+        } else {
+          APP.assets.push({ id: uid(), name: name.trim(), category, subtype: row.subtype||row['Sub Type']||'',
+            investedValue: invested, currentValue: current || invested, units, ticker: row.ticker||row.Ticker||'',
+            notes: '', updatedAt: today() });
+        }
+        imported++;
+      });
+      saveData(APP); renderPage();
+      showToast(`✅ Imported ${imported} assets (duplicates consolidated)`);
+    } catch(err) { showToast('❌ Import failed: ' + err.message); }
+  };
+  if (file.name.endsWith('.csv')) reader.readAsText(file);
+  else reader.readAsBinaryString(file);
+}
+
+function handleTxnImport(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      let data;
+      if (file.name.endsWith('.csv')) data = parseCSV(e.target.result);
+      else { const wb = XLSX.read(e.target.result, {type:'binary'}); data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]); }
+      let ic=0, ec=0;
+      data.forEach(row => {
+        const amount = Number(row.amount||row.Amount||0); if (!amount) return;
+        const type = (row.type||row.Type||'expense').toLowerCase().includes('income') ? 'income' : 'expenses';
+        APP[type].push({ id: uid(), amount: Math.abs(amount),
+          description: row.description||row.Description||row.Narration||'',
+          category: row.category||row.Category||'Other',
+          date: row.date||row.Date||today() });
+        type==='income' ? ic++ : ec++;
+      });
+      saveData(APP); renderPage();
+      showToast(`✅ Imported ${ic} income, ${ec} expenses`);
+    } catch(err) { showToast('❌ Import failed: ' + err.message); }
+  };
+  if (file.name.endsWith('.csv')) reader.readAsText(file); else reader.readAsBinaryString(file);
+}
+
+function handleBackupImport(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      APP = { ...defaultData, ...data };
+      saveData(APP); renderPage();
+      showToast('✅ Backup restored successfully');
+    } catch(err) { showToast('❌ Invalid backup file'); }
+  };
+  reader.readAsText(file);
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+    return obj;
+  }).filter(obj => Object.values(obj).some(v => v));
+}
+
+// ---- SETTINGS ----
+function renderSettings() {
+  return `
+  <h1 class="font-display" style="font-size:28px">Settings</h1>
+  <p class="text-sm text-muted mt-2 mb-6">Manage your preferences</p>
+  <div class="card mb-4" style="padding:24px">
+    <div class="section-title mb-4">Profile</div>
+    <div class="form-group"><label class="form-label">Your Name</label><input class="form-input" id="settingsName" value="${APP.settings.name||''}" placeholder="Your name"></div>
+    <button class="btn btn-primary btn-sm" onclick="APP.settings.name=document.getElementById('settingsName').value;saveData(APP);showToast('Saved')">Save</button>
+  </div>
+  <div class="card mb-4" style="padding:24px">
+    <div class="section-title mb-4">Data Management</div>
+    <div class="flex gap-2" style="flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="exportAllData()">📥 Export All Data (JSON)</button>
+      <button class="btn btn-outline" onclick="exportCSV()">📊 Export Assets CSV</button>
+      <button class="btn btn-danger" onclick="if(confirm('⚠️ This will delete ALL your data. Are you sure?')){localStorage.removeItem('${DB_KEY}');APP=loadData();renderPage();showToast('All data cleared')}">🗑️ Clear All Data</button>
+    </div>
+  </div>
+  <div class="card" style="padding:24px">
+    <div class="section-title mb-4">About</div>
+    <p class="text-sm text-muted">WealthPulse v1.0 — Personal Portfolio Tracker</p>
+    <p class="text-sm text-muted">All data stored locally in your browser. No server, no tracking.</p>
+  </div>`;
+}
+
+// ---- EXPORT ----
+function exportAllData() {
+  const blob = new Blob([JSON.stringify(APP, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `wealthpulse_backup_${today()}.json`;
+  a.click(); showToast('Data exported');
+}
+
+function exportCSV() {
+  let csv = 'Name,Category,SubType,Invested,Current,Units,Ticker\n';
+  APP.assets.forEach(a => {
+    csv += `"${a.name}","${a.category}","${a.subtype||''}",${a.investedValue||0},${a.currentValue||0},${a.units||0},"${a.ticker||''}"\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `wealthpulse_assets_${today()}.csv`;
+  a.click(); showToast('CSV exported');
+}
+
+// ---- FETCH MARKET DATA ----
+async function fetchMFNav(schemeCode) {
+  try {
+    const res = await fetch(`https://api.mfapi.in/mf/${schemeCode}/latest`);
+    const data = await res.json();
+    return data.data && data.data[0] ? Number(data.data[0].nav) : null;
+  } catch { return null; }
+}
+
+async function fetchStockPrice(ticker) {
+  // Using a free proxy approach for Yahoo Finance
+  try {
+    const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`);
+    const data = await res.json();
+    const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+    return price || null;
+  } catch { return null; }
+}
+
+async function fetchGoldPrice() {
+  try {
+    const res = await fetch('https://www.goldapi.io/api/XAU/INR', { headers: { 'x-access-token': 'demo' } });
+    const data = await res.json();
+    return data.price_gram_24k || null;
+  } catch { return null; }
+}
+
+async function refreshPrices() {
+  showToast('🔄 Refreshing market data...');
+  let updated = 0;
+  for (const asset of APP.assets) {
+    if (asset.ticker && asset.units > 0) {
+      if (asset.ticker.startsWith('MF:')) {
+        const nav = await fetchMFNav(asset.ticker.replace('MF:', ''));
+        if (nav) { asset.currentValue = Math.round(nav * asset.units); updated++; }
+      } else {
+        const price = await fetchStockPrice(asset.ticker);
+        if (price) { asset.currentValue = Math.round(price * asset.units); updated++; }
+      }
+    }
+  }
+  if (updated > 0) { saveData(APP); renderPage(); }
+  showToast(`✅ Updated ${updated} asset prices`);
+}
+
+// ============ INIT ============
+renderPage();
+</script>
+</body>
+</html>
