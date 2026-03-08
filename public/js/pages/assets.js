@@ -9,6 +9,8 @@ const AssetsPage = {
   activeFilter: { category: '', asset_class: '', fund_type: '', search: '' },
   pagination: { page: 1, pageSize: 50, total: 0, totalPages: 1 },
   activeTab: 'list',
+  selectMode: false,
+  selectedIds: new Set(),
 
   allItems: [], // all assets without pagination for SIP/FD tabs
 
@@ -20,6 +22,9 @@ const AssetsPage = {
           <p class="text-muted" style="font-size:0.85rem; margin-top:4px">Track investments, monitor performance & allocation</p>
         </div>
         <div class="btn-group responsive-btn-group">
+          <button class="btn btn-outline btn-sm" onclick="AssetsPage.openSipCalendar()">📅 SIP Calendar</button>
+          <button class="btn btn-outline btn-sm" onclick="AssetsPage.openTaxReport()">📋 Tax Report</button>
+          <button class="btn btn-outline btn-sm" onclick="AssetsPage.toggleSelectMode()" id="selectModeBtn">☑ Select</button>
           <button class="btn btn-outline btn-sm" onclick="AssetsPage.mergeduplicates()">🔀 Merge Duplicates</button>
           <button class="btn btn-primary btn-sm" onclick="AssetsPage.openForm()">+ Add Asset</button>
         </div>
@@ -84,7 +89,7 @@ const AssetsPage = {
 
       const [assetsRes, allocRes, filtersRes, allAssetsRes] = await Promise.all([
         API.getAssets(params),
-        API.getAssetAllocation().catch(() => ({ data: null })),
+        API.getAssetAllocation(this.activeFilter).catch(() => ({ data: null })),
         API.getAssetFilters().catch(() => ({ data: { categories: [], assetClasses: [], fundTypes: [] } })),
         API.getAssets({ pageSize: 999 }).catch(() => ({ data: [] })),
       ]);
@@ -123,26 +128,46 @@ const AssetsPage = {
     const gain = alloc.totalValue - alloc.totalInvested;
     const gainPct = alloc.totalInvested > 0 ? (gain / alloc.totalInvested * 100) : 0;
 
-    document.getElementById('assetStats').innerHTML = `
+    const emergency = alloc.emergencyFundValue || 0;
+    const emergencyInv = alloc.emergencyFundInvested || 0;
+    const retirement = alloc.retirementCorpus || 0;
+    const retirementInv = alloc.retirementCorpusInvested || 0;
+    const growth = alloc.totalValue - emergency - retirement;
+    const growthInv = alloc.totalInvested - emergencyInv - retirementInv;
+
+    let statsHTML = `
       <div class="stat-card blue">
         <div class="stat-label">Total Invested</div>
         <div class="stat-value">${Utils.currency(alloc.totalInvested)}</div>
-        <div class="stat-sub">${this.pagination.total} assets</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Current Value</div>
-        <div class="stat-value">${Utils.currency(alloc.totalValue)}</div>
+        <div class="stat-sub">Current: ${Utils.currency(alloc.totalValue)} · ${this.pagination.total} assets</div>
       </div>
       <div class="stat-card ${gain >= 0 ? 'green' : 'red'}">
         <div class="stat-label">Total Gain / Loss</div>
         <div class="stat-value ${Utils.gainColor(gain)}">${Utils.currency(gain)}</div>
         <div class="stat-sub ${Utils.gainClass(gain)}">${gain >= 0 ? '↑' : '↓'} ${Utils.percent(Math.abs(gainPct))}</div>
       </div>
+      ${growth > 0 ? `
+      <div class="stat-card" style="border-left:3px solid #3b82f6">
+        <div class="stat-label">Growth Assets</div>
+        <div class="stat-value">${Utils.currency(growth)}</div>
+        <div class="stat-sub">Invested: ${Utils.currency(growthInv)} · ${alloc.totalValue > 0 ? Utils.percent(growth / alloc.totalValue * 100) : '0%'} of portfolio</div>
+      </div>` : ''}
+      ${retirement > 0 ? `
+      <div class="stat-card" style="border-left:3px solid #7c3aed">
+        <div class="stat-label">Retirement Corpus</div>
+        <div class="stat-value">${Utils.currency(retirement)}</div>
+        <div class="stat-sub">Invested: ${Utils.currency(retirementInv)} · ${alloc.totalValue > 0 ? Utils.percent(retirement / alloc.totalValue * 100) : '0%'} of portfolio</div>
+      </div>` : ''}
       <div class="stat-card yellow">
         <div class="stat-label">Emergency Fund</div>
-        <div class="stat-value">${Utils.currency(alloc.emergencyFundValue || 0)}</div>
+        <div class="stat-value">${Utils.currency(emergency)}</div>
+        <div class="stat-sub">${alloc.totalValue > 0 ? Utils.percent(emergency / alloc.totalValue * 100) : '0%'} of portfolio</div>
       </div>
     `;
+    if (this.activeFilter.category || this.activeFilter.asset_class || this.activeFilter.fund_type || this.activeFilter.search) {
+      statsHTML += `<div style="grid-column: 1 / -1; text-align:center; padding:4px; font-size:0.78rem; color:var(--text-muted); background:var(--bg-tertiary); border-radius:6px">Showing filtered results</div>`;
+    }
+    document.getElementById('assetStats').innerHTML = statsHTML;
   },
 
   populateFilters() {
@@ -235,10 +260,17 @@ const AssetsPage = {
     container.innerHTML = `
       <div class="card">
         ${this._renderAssetClassTabs()}
+        ${this.selectMode && this.selectedIds.size > 0 ? `
+          <div class="bulk-action-bar" style="position:sticky;top:0;z-index:10;background:var(--bg-primary);padding:12px 16px;border-bottom:2px solid var(--red);display:flex;align-items:center;justify-content:space-between;gap:12px;border-radius:12px 12px 0 0">
+            <span style="font-size:0.85rem;font-weight:600">${this.selectedIds.size} asset(s) selected</span>
+            <button class="btn btn-danger btn-sm" onclick="AssetsPage.bulkDelete()">🗑 Delete Selected</button>
+          </div>
+        ` : ''}
         <div class="table-wrapper">
           <table>
             <thead>
               <tr>
+                ${this.selectMode ? '<th style="width:40px"><input type="checkbox" onchange="AssetsPage.toggleSelectAll(this.checked)"></th>' : ''}
                 <th>Name</th>
                 <th>Category</th>
                 <th class="hide-mobile">Class</th>
@@ -246,6 +278,7 @@ const AssetsPage = {
                 <th class="text-right">Current</th>
                 <th class="text-right">Gain/Loss</th>
                 <th class="text-right hide-mobile">XIRR</th>
+                <th class="text-right hide-mobile">1D</th>
                 <th class="text-center">Actions</th>
               </tr>
             </thead>
@@ -266,6 +299,7 @@ const AssetsPage = {
                 const gainUSD = curUSD - invUSD;
                 return `
                   <tr>
+                    ${this.selectMode ? `<td><input type="checkbox" class="asset-checkbox" value="${a.id}" ${this.selectedIds.has(a.id) ? 'checked' : ''} onchange="AssetsPage.toggleSelect('${a.id}', this.checked)"></td>` : ''}
                     <td>
                       <strong class="asset-name-text" title="${Utils.esc(a.name)}">${Utils.truncateText(a.name, 28)}</strong>
                       ${a.ticker ? `<br><span class="text-muted" style="font-size:0.75rem">${Utils.esc(a.ticker)}</span>` : ''}
@@ -286,8 +320,10 @@ const AssetsPage = {
                       ${isUSD ? `<br><span class="usd-value text-muted" style="font-size:0.73rem">${gainUSD >= 0 ? '+' : ''}$${gainUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>` : ''}
                     </td>
                     <td class="text-right font-mono hide-mobile ${xirrVal !== null ? Utils.gainColor(xirrVal) : 'text-muted'}">${xirrVal !== null ? Utils.percent(xirrVal) : '-'}</td>
+                    <td class="text-right font-mono hide-mobile ${Utils.gainColor(a.day_change_pct || 0)}">${a.day_change_pct ? (a.day_change_pct > 0 ? '+' : '') + a.day_change_pct.toFixed(2) + '%' : '-'}</td>
                     <td class="text-center">
                       <div class="btn-group" style="justify-content:center">
+                        <button class="btn-icon" onclick="AssetsPage.openAssetTransactions('${a.id}')" title="Transaction History">📜</button>
                         <button class="btn-icon" onclick="AssetsPage.openForm('${a.id}')" title="Edit">✏️</button>
                         <button class="btn-icon danger" onclick="AssetsPage.deleteItem('${a.id}')" title="Delete">🗑️</button>
                       </div>
@@ -744,8 +780,8 @@ const AssetsPage = {
       const invested = months.map(m => totalSIP * m);
 
       await Charts.bar('sipProjectionChart', labels, [
-        { label: 'Projected Value (12%)', data: projections, color: '#10b981' },
         { label: 'Amount Invested', data: invested, color: '#6366f180' },
+        { label: 'Projected Value (12%)', data: projections, color: '#10b981' },
       ], {
         scales: {
           y: { ticks: { callback: val => Utils.currency(val) } },
@@ -1053,7 +1089,7 @@ const AssetsPage = {
     const a = id ? this.items.find(x => x.id === id) : {};
     const isEdit = !!id;
 
-    const categories = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'International', 'Crypto', 'Other'];
+    const categories = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'International', 'Crypto', 'Retirement', 'Other'];
     const assetClasses = ['Mutual Fund', 'Stock', 'ETF', 'Fixed Income', 'Commodity', 'Cash', 'Real Estate', 'Crypto', 'Other'];
 
     Modal.open(isEdit ? 'Edit Asset' : 'Add Asset', `
@@ -1065,7 +1101,7 @@ const AssetsPage = {
         <div class="form-row-3">
           <div class="form-group">
             <label>Category</label>
-            <select class="form-control" name="category">
+            <select class="form-control" name="category" onchange="AssetsPage._onCategoryChange(this.value)">
               ${categories.map(c => `<option ${a.category === c ? 'selected' : ''}>${c}</option>`).join('')}
             </select>
           </div>
@@ -1118,6 +1154,20 @@ const AssetsPage = {
             <input class="form-control" name="subtype" value="${Utils.esc(a.subtype || '')}" placeholder="e.g. Mutual Fund, FD, Stock">
           </div>
         </div>
+        <div class="form-group" id="retirementFields" style="display:${a.category === 'Retirement' ? 'block' : 'none'}">
+          <label>Retirement Type</label>
+          <select class="form-control" name="retirement_subtype" id="formRetirementSubtype">
+            <option value="">Select Type</option>
+            <option value="EPF" ${(a.retirement_subtype || '') === 'EPF' ? 'selected' : ''}>EPF</option>
+            <option value="NPS" ${(a.retirement_subtype || '') === 'NPS' ? 'selected' : ''}>NPS</option>
+            <option value="PPF" ${(a.retirement_subtype || '') === 'PPF' ? 'selected' : ''}>PPF</option>
+            <option value="Other" ${(a.retirement_subtype || '') === 'Other' ? 'selected' : ''}>Other</option>
+          </select>
+        </div>
+        <div class="form-group" id="npsFields" style="display:${a.retirement_subtype === 'NPS' ? 'block' : 'none'}">
+          <label>NPS Equity Allocation (%)</label>
+          <input class="form-control" type="number" name="nps_equity_pct" id="formNpsEquityPct" value="${a.nps_equity_pct || 75}" min="0" max="100">
+        </div>
         <div class="form-row">
           <div class="form-group">
             <label>Fund House / Bank</label>
@@ -1148,6 +1198,19 @@ const AssetsPage = {
         </div>
       </form>
     `);
+  },
+
+  _onCategoryChange(val) {
+    const retFields = document.getElementById('retirementFields');
+    const npsFields = document.getElementById('npsFields');
+    if (retFields) retFields.style.display = val === 'Retirement' ? 'block' : 'none';
+    if (npsFields) npsFields.style.display = 'none';
+    if (val === 'Retirement') {
+      const retSub = document.getElementById('formRetirementSubtype');
+      if (retSub) retSub.addEventListener('change', function() {
+        if (npsFields) npsFields.style.display = this.value === 'NPS' ? 'block' : 'none';
+      });
+    }
   },
 
   async save(e, id) {
@@ -1187,6 +1250,45 @@ const AssetsPage = {
     }
   },
 
+  toggleSelectMode() {
+    this.selectMode = !this.selectMode;
+    this.selectedIds.clear();
+    const btn = document.getElementById('selectModeBtn');
+    if (btn) btn.textContent = this.selectMode ? '✕ Cancel' : '☑ Select';
+    this.renderList();
+  },
+
+  toggleSelect(id, checked) {
+    if (checked) this.selectedIds.add(id);
+    else this.selectedIds.delete(id);
+    // Re-render just the bulk action bar
+    this.renderList();
+  },
+
+  toggleSelectAll(checked) {
+    if (checked) {
+      this.items.forEach(a => this.selectedIds.add(a.id));
+    } else {
+      this.selectedIds.clear();
+    }
+    this.renderList();
+  },
+
+  async bulkDelete() {
+    if (!this.selectedIds.size) return;
+    const ok = await Modal.confirm('Bulk Delete', `Delete ${this.selectedIds.size} selected asset(s)? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await API.bulkDeleteAssets([...this.selectedIds]);
+      Toast.success(`Deleted ${this.selectedIds.size} assets`);
+      this.selectedIds.clear();
+      this.selectMode = false;
+      const btn = document.getElementById('selectModeBtn');
+      if (btn) btn.textContent = '☑ Select';
+      await this.loadAll();
+    } catch (e) { Toast.error(e.message); }
+  },
+
   async mergeduplicates() {
     const ok = await Modal.confirm('Merge Duplicates', 'This will combine assets with the same name. Continue?');
     if (!ok) return;
@@ -1196,6 +1298,254 @@ const AssetsPage = {
       await this.loadAll();
     } catch (e) {
       Toast.error(e.message);
+    }
+  },
+
+  // ─── Tax Report ────────────────────────────────
+  async openTaxReport() {
+    Modal.open('Tax Report — Capital Gains', `
+      <div id="taxReportContent">
+        <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:0.85rem;padding:20px 0">
+          <div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Generating tax report...
+        </div>
+      </div>
+    `);
+
+    try {
+      const res = await API.getTaxReport();
+      const data = res.data || {};
+      const assets = data.assets || [];
+      const stcg = data.totalSTCG || 0;
+      const ltcg = data.totalLTCG || 0;
+      const totalGains = stcg + ltcg;
+      const estimatedTax = data.estimatedTax || 0;
+
+      const container = document.getElementById('taxReportContent');
+      if (!container) return;
+
+      container.innerHTML = `
+        <div class="stats-grid" style="margin-bottom:16px">
+          <div class="stat-card ${stcg >= 0 ? 'yellow' : 'green'}">
+            <div class="stat-label">Short-Term Capital Gains</div>
+            <div class="stat-value">${Utils.currency(stcg)}</div>
+            <div class="stat-sub">Held &lt; 1 year</div>
+          </div>
+          <div class="stat-card ${ltcg >= 0 ? 'yellow' : 'green'}">
+            <div class="stat-label">Long-Term Capital Gains</div>
+            <div class="stat-value">${Utils.currency(ltcg)}</div>
+            <div class="stat-sub">Held &gt; 1 year</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-label">Estimated Tax</div>
+            <div class="stat-value">${Utils.currency(estimatedTax)}</div>
+            <div class="stat-sub">On total gains of ${Utils.currency(totalGains)}</div>
+          </div>
+        </div>
+        ${assets.length ? `
+        <div class="table-wrapper" style="max-height:400px;overflow-y:auto">
+          <table>
+            <thead><tr><th>Asset</th><th>Category</th><th class="text-right">Invested</th><th class="text-right">Current</th><th class="text-right">Gain/Loss</th><th>Type</th><th class="text-right">Tax</th></tr></thead>
+            <tbody>
+              ${assets.map(a => {
+                const gain = (a.current_value || 0) - (a.invested_value || 0);
+                const isLTCG = a.holding_type === 'LTCG';
+                return `
+                  <tr>
+                    <td><strong title="${Utils.esc(a.name)}">${Utils.truncateText(a.name, 24)}</strong></td>
+                    <td>${Utils.categoryBadge(a.category)}</td>
+                    <td class="text-right font-mono">${Utils.currency(a.invested_value || 0)}</td>
+                    <td class="text-right font-mono">${Utils.currency(a.current_value || 0)}</td>
+                    <td class="text-right font-mono ${Utils.gainColor(gain)}">${Utils.currency(gain)}</td>
+                    <td><span class="badge" style="font-size:0.72rem;padding:2px 6px;background:${isLTCG ? 'var(--green-bg,#f0fdf4)' : 'var(--yellow-bg,#fffbeb)'};color:${isLTCG ? 'var(--green)' : 'var(--yellow,#f59e0b)'}">${isLTCG ? 'LTCG' : 'STCG'}</span></td>
+                    <td class="text-right font-mono text-red">${Utils.currency(a.estimated_tax || 0)}</td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        ` : '<div class="empty-state" style="padding:24px"><p>No taxable gains data available.</p></div>'}
+        <p class="text-muted" style="font-size:0.78rem;margin-top:12px">Note: This is an estimate. Consult a tax advisor for actual tax liability.</p>
+      `;
+    } catch (err) {
+      const container = document.getElementById('taxReportContent');
+      if (container) container.innerHTML = `<div class="empty-state"><p>Error: ${Utils.esc(err.message)}</p></div>`;
+    }
+  },
+
+  // ─── Asset Transaction History ─────────────────
+  async openAssetTransactions(assetId) {
+    const asset = this.items.find(a => a.id === assetId) || this.allItems.find(a => a.id === assetId);
+    const name = asset ? asset.name : 'Asset';
+
+    Modal.open(`Transaction History — ${Utils.esc(name)}`, `
+      <div id="assetTxnContent">
+        <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:0.85rem;padding:20px 0">
+          <div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Loading transactions...
+        </div>
+      </div>
+    `);
+
+    try {
+      const res = await API.getAssetTransactions(assetId);
+      const txns = res.data || [];
+      const container = document.getElementById('assetTxnContent');
+      if (!container) return;
+
+      container.innerHTML = `
+        <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+          <button class="btn btn-primary btn-sm" onclick="AssetsPage.openAddAssetTransaction('${assetId}')">+ Add Transaction</button>
+        </div>
+        ${txns.length ? `
+          <div class="table-wrapper" style="max-height:400px;overflow-y:auto">
+            <table>
+              <thead><tr><th>Date</th><th>Type</th><th class="text-right">Units</th><th class="text-right">Price</th><th class="text-right">Amount</th><th class="text-center">Actions</th></tr></thead>
+              <tbody>
+                ${txns.map(t => `
+                  <tr>
+                    <td class="font-mono text-muted">${t.date ? Utils.formatDate(t.date) : '-'}</td>
+                    <td><span class="badge badge-${t.type === 'buy' ? 'income' : t.type === 'sell' ? 'expense' : 'other'}" style="font-size:0.75rem">${Utils.esc(t.type)}</span></td>
+                    <td class="text-right font-mono">${t.units || '-'}</td>
+                    <td class="text-right font-mono">${t.price ? Utils.currencyFull(t.price) : '-'}</td>
+                    <td class="text-right font-mono ${t.type === 'sell' || t.type === 'dividend' ? 'text-green' : ''}">${Utils.currencyFull(t.amount || 0)}</td>
+                    <td class="text-center">
+                      <button class="btn-icon danger" onclick="AssetsPage.deleteAssetTxn('${t.id}', '${assetId}')" title="Delete">🗑️</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : '<div class="empty-state" style="padding:24px"><p>No transaction history recorded. Add buy/sell/dividend entries.</p></div>'}
+      `;
+    } catch (err) {
+      const container = document.getElementById('assetTxnContent');
+      if (container) container.innerHTML = `<div class="empty-state"><p>Error: ${Utils.esc(err.message)}</p></div>`;
+    }
+  },
+
+  openAddAssetTransaction(assetId) {
+    Modal.open('Add Asset Transaction', `
+      <form onsubmit="AssetsPage.saveAssetTransaction(event, '${assetId}')">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Type</label>
+            <select class="form-control" name="type">
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+              <option value="dividend">Dividend</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date</label>
+            <input class="form-control" type="date" name="date" value="${new Date().toISOString().split('T')[0]}" required>
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Units</label>
+            <input class="form-control" type="number" step="0.0001" name="units" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>Price per Unit</label>
+            <input class="form-control" type="number" step="0.01" name="price" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>Total Amount</label>
+            <input class="form-control" type="number" step="0.01" name="amount" required placeholder="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <input class="form-control" name="notes" placeholder="Optional note">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="Modal.close()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </div>
+      </form>
+    `);
+  },
+
+  async saveAssetTransaction(e, assetId) {
+    e.preventDefault();
+    const form = Object.fromEntries(new FormData(e.target));
+    form.units = Number(form.units) || 0;
+    form.price = Number(form.price) || 0;
+    form.amount = Number(form.amount) || 0;
+    try {
+      await API.addAssetTransaction(assetId, form);
+      Toast.success('Transaction added!');
+      Modal.close();
+      this.openAssetTransactions(assetId);
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async deleteAssetTxn(txnId, assetId) {
+    const ok = await Modal.confirm('Delete Transaction', 'Delete this asset transaction?');
+    if (!ok) return;
+    try {
+      await API.deleteAssetTransaction(txnId);
+      Toast.success('Deleted');
+      this.openAssetTransactions(assetId);
+    } catch (e) { Toast.error(e.message); }
+  },
+
+  // ─── SIP Calendar ──────────────────────────────
+  async openSipCalendar() {
+    Modal.open('SIP Calendar — This Month', `
+      <div id="sipCalendarContent">
+        <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:0.85rem;padding:20px 0">
+          <div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Loading SIP calendar...
+        </div>
+      </div>
+    `);
+
+    try {
+      const res = await API.getSipCalendar();
+      const data = res.data || {};
+      const entries = data.entries || [];
+      const totalSIP = data.totalMonthly || entries.reduce((s, e) => s + (e.amount || 0), 0);
+      const container = document.getElementById('sipCalendarContent');
+      if (!container) return;
+
+      // Group by date
+      const byDate = {};
+      entries.forEach(e => {
+        const dateKey = e.date || 'Unscheduled';
+        if (!byDate[dateKey]) byDate[dateKey] = [];
+        byDate[dateKey].push(e);
+      });
+
+      container.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px;background:var(--bg-tertiary);border-radius:8px">
+          <div>
+            <span class="text-muted" style="font-size:0.82rem">Total Monthly SIP</span>
+            <div style="font-size:1.1rem;font-weight:700;color:var(--accent)">${Utils.currency(totalSIP)}</div>
+          </div>
+          <div>
+            <span class="text-muted" style="font-size:0.82rem">Active SIPs</span>
+            <div style="font-size:1.1rem;font-weight:700">${entries.length}</div>
+          </div>
+        </div>
+        ${entries.length ? `
+          ${Object.keys(byDate).sort().map(date => `
+            <div style="margin-bottom:12px">
+              <div style="font-weight:600;font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border-color)">
+                ${date !== 'Unscheduled' ? Utils.formatDate(date) : 'Unscheduled'}
+              </div>
+              ${byDate[date].map(e => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;font-size:0.85rem;border-radius:6px;margin-bottom:4px" onmouseover="this.style.background='var(--bg-tertiary)'" onmouseout="this.style.background='transparent'">
+                  <span>${Utils.esc(e.name)}</span>
+                  <span class="font-mono" style="font-weight:600;color:var(--blue)">${Utils.currency(e.amount)}</span>
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
+        ` : '<div class="empty-state" style="padding:24px"><p>No SIPs scheduled this month.</p></div>'}
+      `;
+    } catch (err) {
+      const container = document.getElementById('sipCalendarContent');
+      if (container) container.innerHTML = `<div class="empty-state"><p>Error: ${Utils.esc(err.message)}</p></div>`;
     }
   },
 };

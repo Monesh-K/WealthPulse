@@ -2,7 +2,7 @@
  * WealthPulse — Service Worker
  * Enables offline support and PWA install
  */
-const CACHE_NAME = 'wealthpulse-v8';
+const CACHE_NAME = 'wealthpulse-v9';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -23,6 +23,9 @@ const STATIC_ASSETS = [
   '/js/pages/calculators.js',
   '/js/pages/settings.js',
   '/js/pages/import.js',
+  '/js/pages/marketcharts.js',
+  '/js/pages/news.js',
+  '/js/pages/aichat.js',
   '/manifest.json',
 ];
 

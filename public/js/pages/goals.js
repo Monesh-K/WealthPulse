@@ -62,8 +62,10 @@ const GoalsPage = {
         ${this.items.map(g => {
           const years = Math.max((g.target_year || 2030) - now, 0);
           const inflAdj = g.target_amount * Math.pow(1 + (g.inflation || 6) / 100, years);
-          const pct = inflAdj > 0 ? Math.min((g.current_value / inflAdj) * 100, 100) : 0;
-          const gap = Math.max(inflAdj - g.current_value, 0);
+          // Use linkedAssetValue if available, falling back to current_value
+          const effectiveValue = g.linkedAssetValue != null ? g.linkedAssetValue : g.current_value;
+          const pct = inflAdj > 0 ? Math.min((effectiveValue / inflAdj) * 100, 100) : 0;
+          const gap = Math.max(inflAdj - effectiveValue, 0);
           const cls = pct >= 75 ? 'green' : pct >= 40 ? 'yellow' : 'red';
           const monthlyNeeded = years > 0 ? gap / (years * 12) : gap;
 
@@ -75,6 +77,7 @@ const GoalsPage = {
               <div class="card-header">
                 <div class="card-title">🎯 ${Utils.esc(g.name)}</div>
                 <div class="btn-group">
+                  <button class="btn btn-outline btn-xs" onclick="GoalsPage.openLinkAssetsModal('${g.id}')" title="Link Assets">🔗 Link</button>
                   <button class="btn-icon" onclick="GoalsPage.openForm('${g.id}')" title="Edit">✏️</button>
                   <button class="btn-icon danger" onclick="GoalsPage.deleteItem('${g.id}')" title="Delete">🗑️</button>
                 </div>
@@ -88,10 +91,22 @@ const GoalsPage = {
                 <span class="text-muted">${years > 0 ? years + ' years left' : 'Target year reached'}</span>
               </div>
 
+              ${g.linkedAssetValue != null ? `
+                <div style="margin-bottom:12px; padding:8px 10px; background:var(--accent-bg); border-radius:8px; font-size:0.82rem">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+                    <span>Auto-tracked from linked assets</span>
+                    <strong>${Utils.currency(g.linkedAssetValue)}</strong>
+                  </div>
+                  <div class="progress-bar" style="height:6px">
+                    <div class="progress-fill green" style="width:${inflAdj > 0 ? Math.min((g.linkedAssetValue / inflAdj) * 100, 100) : 0}%"></div>
+                  </div>
+                </div>
+              ` : ''}
+
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:0.85rem">
                 <div>
                   <div class="text-muted" style="font-size:0.75rem">Current Value</div>
-                  <div style="font-weight:600">${Utils.currency(g.current_value)}</div>
+                  <div style="font-weight:600">${Utils.currency(effectiveValue)}</div>
                 </div>
                 <div>
                   <div class="text-muted" style="font-size:0.75rem">Target (Nominal)</div>
@@ -230,5 +245,61 @@ const GoalsPage = {
     if (!ok) return;
     try { await API.deleteGoal(id); Toast.success('Deleted'); await this.load(); }
     catch (e) { Toast.error(e.message); }
+  },
+
+  async openLinkAssetsModal(goalId) {
+    const goal = this.items.find(g => g.id === goalId);
+    if (!goal) return;
+
+    // Get currently linked asset IDs
+    let linkedIds = [];
+    try {
+      const res = await API.getGoalAssets(goalId);
+      linkedIds = (res.data || []).map(a => a.id || a);
+    } catch { /* ignore */ }
+
+    // Group assets by category for display
+    const grouped = {};
+    this.assetNames.forEach(a => {
+      const cat = a.category || 'Other';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(a);
+    });
+
+    Modal.open(`Link Assets to "${Utils.esc(goal.name)}"`, `
+      <p class="text-muted" style="font-size:0.85rem; margin-bottom:16px">Select assets to auto-track this goal's progress. The goal's current value will be calculated from linked asset values.</p>
+      <form id="linkAssetsForm" onsubmit="GoalsPage.saveLinkAssets(event, '${goalId}')">
+        <div style="max-height:400px; overflow-y:auto; margin-bottom:16px">
+          ${Object.keys(grouped).sort().map(cat => `
+            <div style="margin-bottom:12px">
+              <div style="font-weight:600; font-size:0.85rem; margin-bottom:6px; color:var(--text-secondary)">${Utils.esc(cat)}</div>
+              ${grouped[cat].map(a => `
+                <label style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:0.85rem; transition:background 0.15s" onmouseover="this.style.background='var(--bg-tertiary)'" onmouseout="this.style.background='transparent'">
+                  <input type="checkbox" name="assetIds" value="${a.id}" ${linkedIds.includes(a.id) ? 'checked' : ''}>
+                  <span style="flex:1">${Utils.esc(a.name)}</span>
+                  <span class="font-mono text-muted" style="font-size:0.8rem">${Utils.currency(a.current_value_inr)}</span>
+                </label>
+              `).join('')}
+            </div>
+          `).join('')}
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="Modal.close()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Links</button>
+        </div>
+      </form>
+    `);
+  },
+
+  async saveLinkAssets(e, goalId) {
+    e.preventDefault();
+    const checkboxes = document.querySelectorAll('#linkAssetsForm input[name="assetIds"]:checked');
+    const assetIds = [...checkboxes].map(cb => cb.value);
+    try {
+      await API.linkGoalAssets(goalId, assetIds);
+      Toast.success('Assets linked to goal!');
+      Modal.close();
+      await this.load();
+    } catch (err) { Toast.error(err.message); }
   },
 };

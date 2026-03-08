@@ -108,10 +108,57 @@ db.exec(`
   INSERT OR IGNORE INTO target_allocation (category, percentage) VALUES
     ('Equity', 60), ('Debt', 20), ('Gold', 10), ('Cash', 5), ('International', 5);
 
+
+  -- Profiles table (family multi-profile support)
+  CREATE TABLE IF NOT EXISTS profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    relationship TEXT DEFAULT 'Self',
+    color TEXT DEFAULT '#6366f1',
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Budgets table (monthly budget tracking)
+  CREATE TABLE IF NOT EXISTS budgets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    category TEXT NOT NULL UNIQUE,
+    monthly_limit REAL NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Asset transactions table (buy/sell/dividend log per asset)
+  CREATE TABLE IF NOT EXISTS asset_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    asset_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'buy',
+    units REAL DEFAULT 0,
+    price REAL DEFAULT 0,
+    amount REAL NOT NULL,
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+  );
+
+  -- Goal-asset linking join table
+  CREATE TABLE IF NOT EXISTS goal_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    goal_id TEXT NOT NULL,
+    asset_id TEXT NOT NULL,
+    FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE,
+    FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE,
+    UNIQUE(goal_id, asset_id)
+  );
+
   -- Indexes for performance
   CREATE INDEX IF NOT EXISTS idx_assets_category ON assets(category);
   CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(type, date);
   CREATE INDEX IF NOT EXISTS idx_snapshots_date ON snapshots(date);
+  CREATE INDEX IF NOT EXISTS idx_asset_transactions_asset_id ON asset_transactions(asset_id);
+  CREATE INDEX IF NOT EXISTS idx_goal_assets_goal_id ON goal_assets(goal_id);
+  CREATE INDEX IF NOT EXISTS idx_goal_assets_asset_id ON goal_assets(asset_id);
+  CREATE INDEX IF NOT EXISTS idx_budgets_category ON budgets(category);
 
   -- Bank accounts table
   CREATE TABLE IF NOT EXISTS bank_accounts (
@@ -138,6 +185,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
   CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 `);
+
+// Seed Retirement allocation
+db.prepare("INSERT OR IGNORE INTO target_allocation (category, percentage) VALUES (?, ?)").run('Retirement', 0);
 
 // ── Migration: Add subcategory column to existing transactions table ──
 try {
@@ -222,6 +272,91 @@ try {
   console.log('[DB] Migrated: added account_number column to bank_accounts');
 }
 
+// ── Migration: Add retirement_subtype to assets ──
+try {
+  db.prepare("SELECT retirement_subtype FROM assets LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE assets ADD COLUMN retirement_subtype TEXT DEFAULT ''");
+  console.log('[DB] Migrated: added retirement_subtype column to assets');
+}
+
+// ── Migration: Add nps_equity_pct to assets ──
+try {
+  db.prepare("SELECT nps_equity_pct FROM assets LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE assets ADD COLUMN nps_equity_pct REAL DEFAULT 75");
+  console.log('[DB] Migrated: added nps_equity_pct column to assets');
+}
+
+// ── Migration: Add nps_debt_pct to assets ──
+try {
+  db.prepare("SELECT nps_debt_pct FROM assets LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE assets ADD COLUMN nps_debt_pct REAL DEFAULT 25");
+  console.log('[DB] Migrated: added nps_debt_pct column to assets');
+}
+
+// ── Migration: Add previous_value to assets (for daily change tracking) ──
+try {
+  db.prepare("SELECT previous_value FROM assets LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE assets ADD COLUMN previous_value REAL DEFAULT 0");
+  console.log('[DB] Migrated: added previous_value column to assets');
+}
+
+// ── Migration: Add profile_id to assets ──
+try {
+  db.prepare("SELECT profile_id FROM assets LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE assets ADD COLUMN profile_id INTEGER DEFAULT NULL");
+  console.log('[DB] Migrated: added profile_id column to assets');
+}
+
+// ── Migration: Add profile_id to liabilities ──
+try {
+  db.prepare("SELECT profile_id FROM liabilities LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE liabilities ADD COLUMN profile_id INTEGER DEFAULT NULL");
+  console.log('[DB] Migrated: added profile_id column to liabilities');
+}
+
+// ── Migration: Add profile_id to goals ──
+try {
+  db.prepare("SELECT profile_id FROM goals LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE goals ADD COLUMN profile_id INTEGER DEFAULT NULL");
+  console.log('[DB] Migrated: added profile_id column to goals');
+}
+
+// ── Migration: Add recurring transaction columns to transactions ──
+try {
+  db.prepare("SELECT is_recurring FROM transactions LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE transactions ADD COLUMN is_recurring INTEGER DEFAULT 0");
+  console.log('[DB] Migrated: added is_recurring column to transactions');
+}
+try {
+  db.prepare("SELECT frequency FROM transactions LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE transactions ADD COLUMN frequency TEXT DEFAULT NULL");
+  console.log('[DB] Migrated: added frequency column to transactions');
+}
+try {
+  db.prepare("SELECT next_due_date FROM transactions LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE transactions ADD COLUMN next_due_date TEXT DEFAULT NULL");
+  console.log('[DB] Migrated: added next_due_date column to transactions');
+}
+
+// ── Insert default "Self" profile if profiles table is empty ──
+(function seedDefaultProfile() {
+  const count = db.prepare("SELECT COUNT(*) as cnt FROM profiles").get();
+  if (count.cnt === 0) {
+    db.prepare("INSERT INTO profiles (name, relationship, color, is_default) VALUES (?, ?, ?, ?)").run('Self', 'Self', '#6366f1', 1);
+    console.log('[DB] Inserted default "Self" profile');
+  }
+})();
+
 // ── Auto-classify existing assets that have no asset_class ──
 (function classifyExistingAssets() {
   const unclassified = db.prepare("SELECT * FROM assets WHERE asset_class = '' OR asset_class IS NULL").all();
@@ -264,7 +399,9 @@ try {
         assetClass = 'ETF';
       } else if (sub.includes('us stock') || (a.category === 'International' && a.currency === 'USD')) {
         assetClass = 'Stock';
-      } else if (sub.includes('fd') || sub.includes('fixed deposit') || sub.includes('ppf') || sub.includes('epf') || sub.includes('nps') || sub.includes('rd') || sub.includes('recurring')) {
+      } else if (sub.includes('epf') || sub.includes('nps') || sub.includes('ppf')) {
+        assetClass = 'Retirement';
+      } else if (sub.includes('fd') || sub.includes('fixed deposit') || sub.includes('rd') || sub.includes('recurring')) {
         assetClass = 'Fixed Income';
       } else if (a.category === 'Gold' || sub.includes('gold') || sub.includes('silver') || sub.includes('commodit')) {
         assetClass = 'Commodity';
@@ -284,5 +421,77 @@ try {
   txn();
   console.log(`[DB] Auto-classified ${unclassified.length} assets`);
 })();
+
+// ── Migration: Fix EPF/NPS/PPF assets — set category and asset_class to 'Retirement' ──
+(function fixRetirementAssets() {
+  const retirementSubtypes = ['epf', 'nps', 'ppf'];
+  const assets = db.prepare("SELECT id, subtype FROM assets WHERE category != 'Retirement'").all();
+  const update = db.prepare("UPDATE assets SET category = 'Retirement', asset_class = 'Retirement' WHERE id = ?");
+  const txn = db.transaction(() => {
+    let count = 0;
+    for (const a of assets) {
+      const sub = (a.subtype || '').toLowerCase();
+      if (retirementSubtypes.some(r => sub.includes(r))) {
+        update.run(a.id);
+        count++;
+      }
+    }
+    if (count > 0) console.log(`[DB] Fixed ${count} EPF/NPS/PPF assets → category Retirement`);
+  });
+  txn();
+})();
+
+// ── Migration: Add gold loan fields to liabilities ──
+try {
+  db.prepare("SELECT gold_weight FROM liabilities LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE liabilities ADD COLUMN gold_weight REAL DEFAULT 0");
+  console.log('[DB] Migrated: added gold_weight column to liabilities');
+}
+try {
+  db.prepare("SELECT gold_purity FROM liabilities LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE liabilities ADD COLUMN gold_purity TEXT DEFAULT '22K'");
+  console.log('[DB] Migrated: added gold_purity column to liabilities');
+}
+try {
+  db.prepare("SELECT pledged_value FROM liabilities LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE liabilities ADD COLUMN pledged_value REAL DEFAULT 0");
+  console.log('[DB] Migrated: added pledged_value column to liabilities');
+}
+
+// ── Migration: Add insurance detail columns to essentials ──
+const insuranceCols = [
+  ['term_policy_id', 'TEXT', "''"],
+  ['term_provider', 'TEXT', "''"],
+  ['term_premium', 'REAL', '0'],
+  ['term_expiry', 'TEXT', "''"],
+  ['term_claim_number', 'TEXT', "''"],
+  ['term_nominee', 'TEXT', "''"],
+  ['term_notes', 'TEXT', "''"],
+  ['health_policy_id', 'TEXT', "''"],
+  ['health_provider', 'TEXT', "''"],
+  ['health_premium', 'REAL', '0'],
+  ['health_expiry', 'TEXT', "''"],
+  ['health_claim_number', 'TEXT', "''"],
+  ['health_members', 'TEXT', "''"],
+  ['health_notes', 'TEXT', "''"],
+];
+insuranceCols.forEach(([col, type, def]) => {
+  try { db.prepare(`SELECT ${col} FROM essentials LIMIT 1`).get(); }
+  catch {
+    db.exec(`ALTER TABLE essentials ADD COLUMN ${col} ${type} DEFAULT ${def}`);
+    console.log(`[DB] Migrated: added ${col} column to essentials`);
+  }
+});
+
+// ── Migration: Add is_emergency_fund flag to assets ──
+try {
+  db.prepare("SELECT is_emergency_fund FROM assets LIMIT 1").get();
+} catch {
+  db.exec("ALTER TABLE assets ADD COLUMN is_emergency_fund INTEGER DEFAULT 0");
+  console.log('[DB] Migrated: added is_emergency_fund column to assets');
+}
 
 module.exports = db;

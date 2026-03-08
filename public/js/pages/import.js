@@ -128,8 +128,56 @@ const ImportPage = {
             <li><strong>US stock prices</strong> update every 10 minutes during US market hours (7 PM – 1:30 AM IST, Mon–Fri).</li>
             <li><strong>Gold, Forex, FD/RD</strong> values refresh daily at 6 PM IST.</li>
             <li>Use the <strong>"Refresh Market Data"</strong> button above to manually update all prices anytime.</li>
-            <li>A <strong>monthly snapshot</strong> is automatically taken on the 1st of each month.</li>
+            <li>A <strong>monthly snapshot</strong> is automatically taken on the 10th of each month.</li>
           </ul>
+        </div>
+      </div>
+
+      <!-- PAN/UAN/PRAN Import Guide -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header">
+          <div class="card-title">🔗 Import via PAN / UAN / PRAN</div>
+        </div>
+        <div style="padding:4px 0; font-size:0.88rem; line-height:1.7; color:var(--text-secondary)">
+          <div style="padding:10px 14px;background:var(--bg-tertiary);border-radius:8px;margin-bottom:14px;border-left:3px solid var(--accent)">
+            <strong>Why can't this be automated?</strong>
+            <p class="text-muted" style="font-size:0.82rem;margin-top:4px;margin-bottom:0">
+              Government portals (CAMS, EPFO, NPS CRA) require OTP/captcha verification that cannot be bypassed programmatically.
+              Please follow the steps below to manually download and import your data.
+            </p>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px">
+            <div style="padding:14px; background:var(--bg-secondary); border-radius:10px">
+              <strong style="display:flex;align-items:center;gap:6px">Mutual Funds (PAN)</strong>
+              <p class="text-muted" style="font-size:0.82rem; margin-top:4px">
+                1. Download CAS from <a href="https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement" target="_blank" rel="noopener" style="color:var(--accent)">CAMS</a> or
+                <a href="https://mfs.kfintech.com/investor/General/ConsolidatedAccountStatement" target="_blank" rel="noopener" style="color:var(--accent)">KFintech</a><br>
+                2. Use your PAN + email OTP to get the statement<br>
+                3. Import the downloaded file using the Groww/CSV importer above
+              </p>
+              <a href="https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement" target="_blank" rel="noopener" class="btn btn-outline btn-xs" style="text-decoration:none;margin-top:8px">Open CAMS Portal</a>
+            </div>
+            <div style="padding:14px; background:var(--bg-secondary); border-radius:10px">
+              <strong style="display:flex;align-items:center;gap:6px">EPF Balance (UAN)</strong>
+              <p class="text-muted" style="font-size:0.82rem; margin-top:4px">
+                1. Visit <a href="https://passbook.epfindia.gov.in" target="_blank" rel="noopener" style="color:var(--accent)">EPFO Passbook Portal</a><br>
+                2. Login with your UAN + password<br>
+                3. Note your total balance<br>
+                4. Update in <a href="#settings" style="color:var(--accent)">Settings → EPF & NPS</a>
+              </p>
+              <a href="https://passbook.epfindia.gov.in" target="_blank" rel="noopener" class="btn btn-outline btn-xs" style="text-decoration:none;margin-top:8px">Open EPFO Portal</a>
+            </div>
+            <div style="padding:14px; background:var(--bg-secondary); border-radius:10px">
+              <strong style="display:flex;align-items:center;gap:6px">NPS Statement (PRAN)</strong>
+              <p class="text-muted" style="font-size:0.82rem; margin-top:4px">
+                1. Visit <a href="https://cra-nsdl.com" target="_blank" rel="noopener" style="color:var(--accent)">NPS CRA Portal</a><br>
+                2. Login with PRAN + password/OTP<br>
+                3. Check your tier-wise balance<br>
+                4. Update in <a href="#settings" style="color:var(--accent)">Settings → EPF & NPS</a>
+              </p>
+              <a href="https://cra-nsdl.com" target="_blank" rel="noopener" class="btn btn-outline btn-xs" style="text-decoration:none;margin-top:8px">Open NPS Portal</a>
+            </div>
+          </div>
         </div>
       </div>
     `;

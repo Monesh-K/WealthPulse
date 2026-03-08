@@ -58,6 +58,8 @@ const TransactionsPage = {
         <button class="tab" data-tab="summary" onclick="TransactionsPage.switchTab('summary')">Monthly Summary</button>
         <button class="tab" data-tab="categories" onclick="TransactionsPage.switchTab('categories')">Categories</button>
         <button class="tab" data-tab="subcategories" onclick="TransactionsPage.switchTab('subcategories')">Subcategories</button>
+        <button class="tab" data-tab="budget" onclick="TransactionsPage.switchTab('budget')">Budget</button>
+        <button class="tab" data-tab="recurring" onclick="TransactionsPage.switchTab('recurring')">Recurring</button>
       </div>
 
       <div id="txnTabContent">
@@ -88,6 +90,7 @@ const TransactionsPage = {
       this.items = txnRes.data || [];
       this.pagination = txnRes.pagination || this.pagination;
       this.summary = sumRes.data || [];
+      this.investmentByMonth = sumRes.investmentByMonth || {};
       this.bankAccounts = bankRes.data || [];
       this.renderStats();
       this.populateCategoryFilter();
@@ -173,13 +176,13 @@ const TransactionsPage = {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
     const yearKey = `${now.getFullYear()}`;
-    
+
     // Current month stats
     const monthIncome = this.summary.filter(s => s.month===monthKey && s.type==='income').reduce((s,r) => s+r.total, 0);
     const monthExpense = this.summary.filter(s => s.month===monthKey && s.type==='expense').reduce((s,r) => s+r.total, 0);
     const monthSavings = monthIncome - monthExpense;
     const monthRate = monthIncome > 0 ? (monthSavings/monthIncome*100) : 0;
-    
+
     // Year-to-date stats
     const yearIncome = this.summary.filter(s => s.month.startsWith(yearKey) && s.type==='income').reduce((s,r) => s+r.total, 0);
     const yearExpense = this.summary.filter(s => s.month.startsWith(yearKey) && s.type==='expense').reduce((s,r) => s+r.total, 0);
@@ -187,8 +190,6 @@ const TransactionsPage = {
     const yearRate = yearIncome > 0 ? (yearSavings/yearIncome*100) : 0;
     const monthsElapsed = now.getMonth() + 1;
     const avgMonthlyExpense = monthsElapsed > 0 ? yearExpense / monthsElapsed : 0;
-    
-    const subcatCount = new Set(this.items.filter(t => t.subcategory).map(t => t.subcategory)).size;
 
     document.getElementById('txnStats').innerHTML = `
       <div class="stat-card green">
@@ -216,11 +217,6 @@ const TransactionsPage = {
         <div class="stat-value">${Utils.currency(avgMonthlyExpense)}</div>
         <div class="stat-sub">${monthsElapsed} months in ${yearKey}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Transactions</div>
-        <div class="stat-value">${this.pagination.total}</div>
-        <div class="stat-sub">${subcatCount} subcategories</div>
-      </div>
     `;
   },
 
@@ -231,6 +227,8 @@ const TransactionsPage = {
     else if (tab === 'summary') this.renderSummary();
     else if (tab === 'categories') this.renderCategories();
     else if (tab === 'subcategories') this.renderSubcategories();
+    else if (tab === 'budget') this.renderBudget();
+    else if (tab === 'recurring') this.renderRecurring();
   },
 
   renderList() {
@@ -251,7 +249,10 @@ const TransactionsPage = {
               ${this.items.map(t => `
                 <tr>
                   <td class="font-mono text-muted">${Utils.formatDate(t.date)}</td>
-                  <td title="${Utils.esc(t.description)}">${Utils.truncateText(t.description, 30) || '-'}</td>
+                  <td title="${Utils.esc(t.description)}">
+                    ${Utils.truncateText(t.description, 30) || '-'}
+                    ${t.is_recurring ? '<span class="badge" style="background:var(--blue-bg,#eff6ff);color:var(--blue);font-size:0.65rem;padding:1px 5px;border-radius:8px;margin-left:4px;vertical-align:middle">recurring</span>' : ''}
+                  </td>
                   <td><span class="badge badge-other txn-cat-badge" style="cursor:pointer" onclick="TransactionsPage.filterByCategory('${Utils.esc(t.category)}')">${Utils.esc(t.category)}</span></td>
                   <td class="hide-mobile">${t.subcategory ? `<span class="badge txn-subcat-badge" style="cursor:pointer; background:var(--bg-secondary); color:var(--text-primary); font-size:0.75rem" onclick="TransactionsPage.filterBySubcategory('${Utils.esc(t.category)}','${Utils.esc(t.subcategory)}')">${Utils.esc(t.subcategory)}</span>` : '<span class="text-muted" style="font-size:0.8rem">—</span>'}</td>
                   <td class="hide-mobile">${t.bank_name ? `<span class="badge" style="background:var(--blue-bg);color:var(--blue);font-size:0.72rem">🏦 ${Utils.esc(t.bank_name)}</span>` : '<span class="text-muted" style="font-size:0.8rem">—</span>'}</td>
@@ -259,6 +260,7 @@ const TransactionsPage = {
                   <td class="text-right font-mono ${t.type==='income'?'text-green':'text-red'}">${t.type==='income'?'+':'-'}${Utils.currencyFull(t.amount)}</td>
                   <td class="text-center">
                     <div class="btn-group" style="justify-content:center">
+                      <button class="btn-icon" onclick="TransactionsPage.openMakeRecurringModal('${t.id}')" title="Make Recurring">🔁</button>
                       <button class="btn-icon" onclick="TransactionsPage.openEditForm('${t.id}')" title="Edit">✏️</button>
                       <button class="btn-icon danger" onclick="TransactionsPage.deleteItem('${t.id}')" title="Delete">🗑️</button>
                     </div>
@@ -392,8 +394,8 @@ const TransactionsPage = {
 
   _navigatePeriod(dir) {
     // dir: -1 for prev, +1 for next
-    const range = this._getCategoryDateRange();
-    const from = new Date(range.dateFrom);
+    const range = this._getEffectiveDateRange();
+    const from = new Date(range.dateFrom + 'T00:00:00');
 
     if (this.categoryPeriod === 'weekly') {
       from.setDate(from.getDate() + dir * 7);
@@ -412,8 +414,11 @@ const TransactionsPage = {
     if (this.categoryPeriod === 'weekly') {
       end = new Date(from); end.setDate(from.getDate() + 6);
     } else if (this.categoryPeriod === 'monthly') {
+      // Ensure from is 1st of month
+      from.setDate(1);
       end = new Date(from.getFullYear(), from.getMonth() + 1, 0);
     } else if (this.categoryPeriod === 'yearly') {
+      from.setMonth(0, 1); // Jan 1
       end = new Date(from.getFullYear(), 11, 31);
     }
 
@@ -511,7 +516,10 @@ const TransactionsPage = {
       const expData = expRes.data || [];
       const incTotal = incData.reduce((s, c) => s + c.total, 0);
       const expTotal = expData.reduce((s, c) => s + c.total, 0);
-      const netSavings = incTotal - expTotal;
+      const investmentTotal = expData.filter(c => c.category === 'Investment').reduce((s, c) => s + c.total, 0);
+      const trueExpTotal = expTotal - investmentTotal;
+      const netSavings = incTotal - trueExpTotal;
+      const savingsRatePct = incTotal > 0 ? ((netSavings / incTotal) * 100).toFixed(1) : '0.0';
 
       container.innerHTML = `
         ${this._renderPeriodSelector()}
@@ -526,16 +534,16 @@ const TransactionsPage = {
               </div>
               <div style="font-size:1.2rem;color:var(--text-muted)">−</div>
               <div>
-                <span class="text-muted" style="font-size:0.78rem">Expense</span>
-                <div class="font-mono text-red" style="font-size:1.1rem;font-weight:600">${Utils.currency(expTotal)}</div>
+                <span class="text-muted" style="font-size:0.78rem">Expense (excl. invest.)</span>
+                <div class="font-mono text-red" style="font-size:1.1rem;font-weight:600">${Utils.currency(trueExpTotal)}</div>
               </div>
               <div style="font-size:1.2rem;color:var(--text-muted)">=</div>
               <div>
-                <span class="text-muted" style="font-size:0.78rem">Net</span>
+                <span class="text-muted" style="font-size:0.78rem">Savings + Investments</span>
                 <div class="font-mono ${Utils.gainColor(netSavings)}" style="font-size:1.1rem;font-weight:700">${Utils.currency(netSavings)}</div>
               </div>
             </div>
-            ${incTotal > 0 ? `<div><span class="text-muted" style="font-size:0.78rem">Savings Rate</span><div class="font-mono" style="font-weight:600;font-size:1rem;color:${netSavings >= 0 ? 'var(--green)' : 'var(--red)'}">${((netSavings / incTotal) * 100).toFixed(1)}%</div></div>` : ''}
+            ${incTotal > 0 ? `<div><span class="text-muted" style="font-size:0.78rem">Savings Rate</span><div class="font-mono" style="font-weight:600;font-size:1rem;color:${netSavings >= 0 ? 'var(--green)' : 'var(--red)'}">${savingsRatePct}%</div>${investmentTotal > 0 ? `<div class="text-muted" style="font-size:0.72rem">Includes ${Utils.currency(investmentTotal)} invested</div>` : ''}</div>` : ''}
           </div>
           ${incTotal > 0 || expTotal > 0 ? `
           <div style="margin-top:12px;height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden;display:flex">
@@ -936,6 +944,235 @@ const TransactionsPage = {
       const container = document.getElementById('aiSpendingInsight');
       if (container) container.innerHTML = `<p class="text-muted">AI unavailable: ${err.message}</p>`;
     }
+  },
+
+  // ─── BUDGET TAB ─────────────────────────────────
+  async renderBudget() {
+    const container = document.getElementById('txnTabContent');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div> Loading budgets...</div>';
+
+    try {
+      const [budgetRes, statusRes] = await Promise.all([
+        API.getBudgets().catch(() => ({ data: [] })),
+        API.getBudgetStatus().catch(() => ({ data: [] })),
+      ]);
+
+      const budgets = budgetRes.data || [];
+      const statuses = statusRes.data || [];
+
+      // Merge budget limits with actual spending status
+      const budgetMap = {};
+      budgets.forEach(b => { budgetMap[b.category] = b; });
+      statuses.forEach(s => {
+        if (!budgetMap[s.category]) budgetMap[s.category] = { category: s.category, limit: 0 };
+        budgetMap[s.category].spent = s.spent || 0;
+      });
+
+      const allBudgets = Object.values(budgetMap);
+
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Monthly Budgets</div>
+            <button class="btn btn-primary btn-sm" onclick="TransactionsPage.openSetBudgetModal()">+ Set Budget</button>
+          </div>
+          ${allBudgets.length ? `
+            <div style="padding:16px">
+              ${allBudgets.map(b => {
+                const limit = b.limit || 0;
+                const spent = b.spent || 0;
+                const pct = limit > 0 ? (spent / limit * 100) : (spent > 0 ? 100 : 0);
+                const colorClass = pct > 100 ? 'red' : pct >= 75 ? 'yellow' : 'green';
+                const barColor = pct > 100 ? '#ef4444' : pct >= 75 ? '#f59e0b' : '#10b981';
+                return `
+                  <div style="margin-bottom:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <strong style="font-size:0.9rem">${Utils.esc(b.category)}</strong>
+                        ${pct > 100 ? '<span class="badge" style="background:var(--red-bg,#fef2f2);color:var(--red);font-size:0.65rem;padding:1px 6px;border-radius:8px">Over Budget</span>' : ''}
+                      </div>
+                      <div style="display:flex;align-items:center;gap:12px;font-size:0.85rem">
+                        <span class="font-mono ${pct > 100 ? 'text-red' : ''}">${Utils.currency(spent)}</span>
+                        ${limit > 0 ? `<span class="text-muted">/ ${Utils.currency(limit)}</span>` : '<span class="text-muted">No limit</span>'}
+                        <button class="btn btn-outline btn-xs" onclick="TransactionsPage.openSetBudgetModal('${Utils.esc(b.category)}', ${limit})" style="padding:2px 8px;font-size:0.75rem">Edit</button>
+                        ${b.id ? `<button class="btn-icon danger" onclick="TransactionsPage.deleteBudgetItem('${b.id}')" title="Delete" style="font-size:0.75rem">🗑️</button>` : ''}
+                      </div>
+                    </div>
+                    <div style="height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden">
+                      <div style="width:${Math.min(pct, 100)}%;height:100%;background:${barColor};border-radius:4px;transition:width 0.5s ease"></div>
+                    </div>
+                    <div class="text-muted" style="font-size:0.75rem;margin-top:2px;text-align:right">${limit > 0 ? pct.toFixed(0) + '% used' : ''}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : `
+            <div class="empty-state" style="padding:32px">
+              <div class="empty-icon">📊</div>
+              <h3>No budgets set</h3>
+              <p>Set monthly budgets per category to track spending limits</p>
+              <button class="btn btn-primary btn-sm" onclick="TransactionsPage.openSetBudgetModal()">+ Set Budget</button>
+            </div>
+          `}
+        </div>
+      `;
+    } catch (e) {
+      container.innerHTML = `<div class="empty-state"><p>Error loading budgets: ${Utils.esc(e.message)}</p></div>`;
+    }
+  },
+
+  openSetBudgetModal(category, currentLimit) {
+    const expenseCategories = ['Food', 'Transport', 'Shopping', 'Bills', 'Health', 'Entertainment', 'Education', 'Rent', 'EMI', 'Insurance', 'Investment', 'Other'];
+    // Include existing categories from transactions
+    const existingCats = [...new Set(this.items.filter(t => t.type === 'expense').map(t => t.category))];
+    existingCats.forEach(c => { if (c && !expenseCategories.includes(c)) expenseCategories.push(c); });
+
+    Modal.open('Set Budget', `
+      <form onsubmit="TransactionsPage.saveBudgetItem(event)">
+        <div class="form-group">
+          <label>Category</label>
+          <select class="form-control" name="category" id="budgetCategory">
+            ${expenseCategories.map(c => `<option value="${Utils.esc(c)}" ${c === category ? 'selected' : ''}>${Utils.esc(c)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Monthly Limit</label>
+          <input class="form-control" type="number" step="0.01" name="limit" value="${currentLimit || ''}" required placeholder="e.g. 10000">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="Modal.close()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Budget</button>
+        </div>
+      </form>
+    `);
+  },
+
+  async saveBudgetItem(e) {
+    e.preventDefault();
+    const form = Object.fromEntries(new FormData(e.target));
+    form.limit = Number(form.limit);
+    try {
+      await API.saveBudget(form);
+      Toast.success('Budget saved!');
+      Modal.close();
+      this.renderBudget();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async deleteBudgetItem(id) {
+    const ok = await Modal.confirm('Delete Budget', 'Remove this budget limit?');
+    if (!ok) return;
+    try {
+      await API.deleteBudget(id);
+      Toast.success('Budget removed');
+      this.renderBudget();
+    } catch (e) { Toast.error(e.message); }
+  },
+
+  // ─── RECURRING TRANSACTIONS TAB ─────────────────
+  async renderRecurring() {
+    const container = document.getElementById('txnTabContent');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div> Loading recurring transactions...</div>';
+
+    try {
+      const res = await API.getRecurringTransactions().catch(() => ({ data: [] }));
+      const recurring = res.data || [];
+
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Recurring Transactions</div>
+          </div>
+          ${recurring.length ? `
+            <div class="table-wrapper">
+              <table>
+                <thead><tr><th>Description</th><th>Category</th><th>Type</th><th class="text-right">Amount</th><th>Frequency</th><th>Next Due</th><th class="text-center">Actions</th></tr></thead>
+                <tbody>
+                  ${recurring.map(t => `
+                    <tr>
+                      <td>
+                        <strong>${Utils.esc(t.description || t.category)}</strong>
+                        <span class="badge" style="background:var(--blue-bg,#eff6ff);color:var(--blue);font-size:0.65rem;padding:1px 5px;border-radius:8px;margin-left:4px">recurring</span>
+                      </td>
+                      <td><span class="badge badge-other">${Utils.esc(t.category)}</span></td>
+                      <td><span class="badge badge-${t.type}">${t.type}</span></td>
+                      <td class="text-right font-mono ${t.type === 'income' ? 'text-green' : 'text-red'}">${t.type === 'income' ? '+' : '-'}${Utils.currencyFull(t.amount)}</td>
+                      <td style="font-size:0.85rem">${Utils.esc(t.frequency || 'monthly')}</td>
+                      <td class="font-mono text-muted" style="font-size:0.85rem">${t.next_due_date ? Utils.formatDate(t.next_due_date) : '-'}</td>
+                      <td class="text-center">
+                        <button class="btn-icon danger" onclick="TransactionsPage.removeRecurring('${t.id}')" title="Remove Recurring">✕</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          ` : `
+            <div class="empty-state" style="padding:32px">
+              <div class="empty-icon">🔁</div>
+              <h3>No recurring transactions</h3>
+              <p>Mark any transaction as recurring using the 🔁 button in the Transactions tab</p>
+            </div>
+          `}
+        </div>
+      `;
+    } catch (e) {
+      container.innerHTML = `<div class="empty-state"><p>Error: ${Utils.esc(e.message)}</p></div>`;
+    }
+  },
+
+  openMakeRecurringModal(id) {
+    const t = this.items.find(x => x.id === id);
+    if (!t) return;
+
+    Modal.open('Make Recurring', `
+      <form onsubmit="TransactionsPage.saveRecurring(event, '${id}')">
+        <p class="text-muted" style="font-size:0.85rem; margin-bottom:16px">
+          Set <strong>${Utils.esc(t.description || t.category)}</strong> (${Utils.currencyFull(t.amount)}) as a recurring transaction.
+        </p>
+        <div class="form-group">
+          <label>Frequency</label>
+          <select class="form-control" name="frequency">
+            <option value="monthly">Monthly</option>
+            <option value="quarterly">Quarterly</option>
+            <option value="yearly">Yearly</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Next Due Date</label>
+          <input class="form-control" type="date" name="next_due_date" required value="${this._getNextMonth()}">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="Modal.close()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Set Recurring</button>
+        </div>
+      </form>
+    `);
+  },
+
+  _getNextMonth() {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().split('T')[0];
+  },
+
+  async saveRecurring(e, id) {
+    e.preventDefault();
+    const form = Object.fromEntries(new FormData(e.target));
+    try {
+      await API.setRecurring(id, form);
+      Toast.success('Transaction set as recurring!');
+      Modal.close();
+      await this.loadAll();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async removeRecurring(id) {
+    try {
+      await API.setRecurring(id, { is_recurring: false, frequency: null, next_due_date: null });
+      Toast.success('Recurring removed');
+      this.renderRecurring();
+    } catch (e) { Toast.error(e.message); }
   },
 
   _renderMarkdown(text) {

@@ -17,6 +17,19 @@ Rules:
 - Never recommend specific stocks/funds by name
 - Format response as clean markdown with bullet points`;
 
+const CHAT_SYSTEM_PROMPT = `You are WealthPulse AI, an expert Indian personal finance advisor.
+You have access to the user's complete portfolio data and answer questions about their finances.
+Rules:
+- Be conversational but informative
+- Use ₹ for Indian currency, $ for USD
+- Be specific with numbers from the data provided
+- Provide actionable advice when asked
+- Consider Indian tax laws (80C, 80CCD, etc.) when relevant
+- Compare with benchmarks when discussing performance
+- Format response as clean markdown with bullet points
+- Keep responses concise (3-5 bullet points max)
+- Never recommend specific stocks/funds by name`;
+
 // Free Groq models in preference order (best quality first)
 const FREE_MODELS = [
   'llama-3.3-70b-versatile',      // Best quality — Meta Llama 3.3 70B
@@ -126,8 +139,86 @@ class AIService {
 
   // ── Prompt builders ──────────────────────────────────────────────
 
+  async chatWithPortfolio(userMessage, portfolioData) {
+    if (!this.enabled) {
+      return { success: false, error: 'AI not configured. Add GROQ_API_KEY to .env' };
+    }
+
+    const contextPrompt = this.buildPortfolioContext(portfolioData);
+    const fullPrompt = `${contextPrompt}\n\nUser Question: ${userMessage}\n\nProvide a helpful, specific answer based on the portfolio data above.`;
+
+    const preferred = process.env.GROQ_MODEL || FREE_MODELS[0];
+    const modelsToTry = [preferred, ...FREE_MODELS.filter(m => m !== preferred)];
+
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const modelName = modelsToTry[i];
+      try {
+        const chatCompletion = await this.client.chat.completions.create({
+          model: modelName,
+          messages: [
+            { role: 'system', content: CHAT_SYSTEM_PROMPT },
+            { role: 'user', content: fullPrompt },
+          ],
+          max_tokens: 800,
+          temperature: 0.7,
+        });
+        const content = chatCompletion.choices?.[0]?.message?.content || 'No response generated.';
+        return { success: true, response: content, model: modelName };
+      } catch (err) {
+        const status = err.status || err.statusCode || 0;
+        if (status === 429 && i < modelsToTry.length - 1) continue;
+        if (i === modelsToTry.length - 1) {
+          return { success: false, error: 'All AI models are rate-limited. Please try again in a minute.' };
+        }
+      }
+    }
+    return { success: false, error: 'AI service unavailable.' };
+  }
+
+  buildPortfolioContext(d) {
+    const benchmarks = {
+      'Nifty 50': 12, 'Nifty Midcap 150': 14, 'Nifty Smallcap 250': 15,
+      'S&P 500': 10, 'NASDAQ 100': 12
+    };
+
+    let context = `Portfolio Overview:
+- Net Worth: ₹${(d.netWorth || 0).toLocaleString()}
+- Total Invested: ₹${(d.totalInvested || 0).toLocaleString()}
+- Current Value: ₹${(d.totalCurrent || 0).toLocaleString()}
+- Gain/Loss: ₹${(d.gainLoss || 0).toLocaleString()} (${d.totalInvested > 0 ? ((d.gainLoss / d.totalInvested) * 100).toFixed(1) : 0}%)
+- Total Assets: ${d.assetCount || 0}
+- Liabilities: ₹${(d.totalLiabilities || 0).toLocaleString()}`;
+
+    if (d.allocationByCategory) {
+      context += `\n\nAllocation: ${Object.entries(d.allocationByCategory).map(([k, v]) => `${k}: ₹${v.toLocaleString()}`).join(', ')}`;
+    }
+
+    if (d.retirementCorpus) {
+      context += `\n- Retirement Corpus: ₹${d.retirementCorpus.toLocaleString()}`;
+      context += `\n- Liquid Net Worth: ₹${d.liquidNetWorth.toLocaleString()}`;
+    }
+
+    if (d.topAssets && d.topAssets.length) {
+      context += `\n\nTop Holdings:\n${d.topAssets.slice(0, 10).map(a =>
+        `- ${a.name} (${a.category}): Invested ₹${(a.invested_value || 0).toLocaleString()}, Current ₹${(a.current_value || 0).toLocaleString()}`
+      ).join('\n')}`;
+    }
+
+    if (d.monthlyIncome) {
+      context += `\n\nMonthly Income: ₹${d.monthlyIncome.toLocaleString()}, Expenses: ₹${(d.monthlyExpenses || 0).toLocaleString()}`;
+    }
+
+    context += `\n\nBenchmark CAGR (historical): ${Object.entries(benchmarks).map(([k, v]) => `${k}: ${v}%`).join(', ')}`;
+
+    if (d.userAge) {
+      context += `\n\nUser Age: ${d.userAge} years. Consider age-appropriate advice for asset allocation, risk tolerance, retirement planning, and investment horizon.`;
+    }
+
+    return context;
+  }
+
   buildDashboardPrompt(d) {
-    return `Analyze this portfolio overview and give 3-4 key insights:
+    let prompt = `Analyze this portfolio overview and give 3-4 key insights:
 - Net Worth: ₹${d.netWorth?.toLocaleString()}
 - Total Invested: ₹${d.totalInvested?.toLocaleString()}
 - Current Value: ₹${d.totalCurrent?.toLocaleString()}
@@ -136,9 +227,10 @@ class AIService {
 - Monthly Income: ₹${d.monthlyIncome?.toLocaleString()}
 - Monthly Expenses: ₹${d.monthlyExpenses?.toLocaleString()}
 - Assets: ${d.assetCount} | Liabilities: ${d.liabilityCount} | Goals: ${d.goalCount}
-- Allocation: ${d.allocationByCategory ? Object.entries(d.allocationByCategory).map(([k, v]) => `${k}: ₹${v.toLocaleString()}`).join(', ') : 'N/A'}
-
-Highlight strengths, risks, and one improvement suggestion.`;
+- Allocation: ${d.allocationByCategory ? Object.entries(d.allocationByCategory).map(([k, v]) => `${k}: ₹${v.toLocaleString()}`).join(', ') : 'N/A'}`;
+    if (d.userAge) prompt += `\n- User Age: ${d.userAge} years`;
+    prompt += `\n\nHighlight strengths, risks, and one improvement suggestion.${d.userAge ? ' Consider age-appropriate advice for risk tolerance and investment horizon.' : ''}`;
+    return prompt;
   }
 
   buildPortfolioPrompt(d) {
@@ -150,8 +242,8 @@ ${assetList}
 
 Total Invested: ₹${d.totalInvested?.toLocaleString()}
 Total Current: ₹${d.totalCurrent?.toLocaleString()}
-
-Focus on: diversification, concentration risk, and rebalancing needs.`;
+${d.userAge ? `User Age: ${d.userAge} years\n` : ''}
+Focus on: diversification, concentration risk, and rebalancing needs.${d.userAge ? ' Consider age-appropriate risk tolerance.' : ''}`;
   }
 
   buildAllocationPrompt(d) {
@@ -160,8 +252,8 @@ Focus on: diversification, concentration risk, and rebalancing needs.`;
     return `Compare current vs target asset allocation:
 Current: ${Object.entries(alloc).map(([k, v]) => `${k}: ${v.toFixed(1)}%`).join(', ')}
 Target: ${Object.entries(target).map(([k, v]) => `${k}: ${v}%`).join(', ')}
-
-Suggest rebalancing moves with specific categories to increase/decrease.`;
+${d.userAge ? `User Age: ${d.userAge} years\n` : ''}
+Suggest rebalancing moves with specific categories to increase/decrease.${d.userAge ? ' Factor in age-appropriate equity-debt split.' : ''}`;
   }
 
   buildSpendingPrompt(d) {
@@ -172,11 +264,11 @@ Suggest rebalancing moves with specific categories to increase/decrease.`;
 Monthly Income: ₹${d.monthlyIncome?.toLocaleString()}
 Monthly Expenses: ₹${d.monthlyExpenses?.toLocaleString()}
 Savings Rate: ${d.savingsRate?.toFixed(1)}%
-
+${d.userAge ? `User Age: ${d.userAge} years\n` : ''}
 Spending by Category:
 ${cats || 'No data'}
 
-Highlight overspending areas and suggest a budget improvement.`;
+Highlight overspending areas and suggest a budget improvement.${d.userAge ? ' Consider age-specific financial priorities (e.g. savings goals, retirement planning).' : ''}`;
   }
 
   buildGoalsPrompt(d) {
@@ -188,8 +280,8 @@ ${goals || 'No goals set'}
 
 Monthly Income: ₹${d.monthlyIncome?.toLocaleString()}
 Net Worth: ₹${d.netWorth?.toLocaleString()}
-
-Assess which goals are on track, at risk, and suggest adjustments.`;
+${d.userAge ? `User Age: ${d.userAge} years\n` : ''}
+Assess which goals are on track, at risk, and suggest adjustments.${d.userAge ? ' Consider remaining working years and age-appropriate milestones.' : ''}`;
   }
 
   buildSalaryPrompt(d) {

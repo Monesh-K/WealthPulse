@@ -40,7 +40,7 @@ const SnapshotsPage = {
           <div class="empty-state">
             <div class="empty-icon">📸</div>
             <h3>No snapshots yet</h3>
-            <p>Snapshots are taken automatically on the 1st of each month, or take one now</p>
+            <p>Snapshots are taken automatically on the 10th of each month, or take one now</p>
             <button class="btn btn-primary btn-sm" onclick="SnapshotsPage.takeSnapshot()">Take First Snapshot</button>
           </div>
         </div>
@@ -80,6 +80,16 @@ const SnapshotsPage = {
         </div>
       </div>
 
+      <!-- Stacked Allocation History -->
+      <div class="card mb-24">
+        <div class="card-header"><div class="card-title">Stacked Allocation History</div></div>
+        <div id="allocationHistoryContent">
+          <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:0.85rem;padding:20px">
+            <div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Loading allocation history...
+          </div>
+        </div>
+      </div>
+
       <!-- Table -->
       <div class="card">
         <div class="card-header"><div class="card-title">Snapshot History</div></div>
@@ -98,6 +108,7 @@ const SnapshotsPage = {
                     <td class="text-right font-mono" style="font-weight:600">${Utils.currencyFull(s.net_worth)}</td>
                     <td class="text-right font-mono ${Utils.gainColor(change)}">${prevS ? Utils.currencyFull(change) : '-'}</td>
                     <td class="text-center">
+                      <button class="btn-icon" onclick="SnapshotsPage.editDate(${s.id}, '${s.date}')" title="Edit Date">✏️</button>
                       <button class="btn-icon danger" onclick="SnapshotsPage.deleteItem(${s.id})" title="Delete">🗑️</button>
                     </td>
                   </tr>
@@ -119,6 +130,9 @@ const SnapshotsPage = {
           { label: 'Liabilities', data: this.items.map(s => s.liabilities), color: '#ef4444', fill: false },
         ]
       );
+
+      // Load allocation history
+      this.loadAllocationHistory();
     });
   },
 
@@ -135,5 +149,82 @@ const SnapshotsPage = {
     if (!ok) return;
     try { await API.deleteSnapshot(id); Toast.success('Deleted'); await this.load(); }
     catch (e) { Toast.error(e.message); }
+  },
+
+  editDate(id, currentDate) {
+    Modal.open('Edit Snapshot Date', `
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div>
+          <label class="form-label">Snapshot Date</label>
+          <input type="date" id="editSnapshotDate" class="form-input" value="${currentDate}"
+            max="${new Date().toISOString().split('T')[0]}" style="width:100%">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-outline btn-sm" onclick="Modal.close()">Cancel</button>
+          <button class="btn btn-primary btn-sm" onclick="SnapshotsPage.saveDate(${id})">Save</button>
+        </div>
+      </div>
+    `);
+  },
+
+  async saveDate(id) {
+    const dateInput = document.getElementById('editSnapshotDate');
+    const date = dateInput?.value;
+    if (!date) { Toast.error('Please select a date'); return; }
+    try {
+      await API.updateSnapshot(id, { date });
+      Modal.close();
+      Toast.success('Snapshot date updated');
+      await this.load();
+    } catch (e) { Toast.error(e.message); }
+  },
+
+  async loadAllocationHistory() {
+    const container = document.getElementById('allocationHistoryContent');
+    if (!container) return;
+
+    try {
+      const res = await API.getAllocationHistory();
+      const data = res.data || {};
+      const dates = data.dates || [];
+      const categories = data.categories || {};
+
+      if (!dates.length || !Object.keys(categories).length) {
+        container.innerHTML = '<div class="empty-state" style="padding:24px"><p>Not enough snapshot data for allocation history. Take more snapshots over time.</p></div>';
+        return;
+      }
+
+      const colors = {
+        'Equity': '#3b82f6', 'Debt': '#10b981', 'Gold': '#f59e0b', 'Cash': '#6b7280',
+        'Real Estate': '#b45309', 'International': '#7c3aed', 'Crypto': '#db2777', 'Retirement': '#7c3aed'
+      };
+      const defaultColors = ['#6366f1', '#ec4899', '#14b8a6', '#f97316', '#64748b', '#8b5cf6', '#ef4444', '#3b82f6'];
+      let colorIdx = 0;
+
+      const datasets = Object.keys(categories).map(cat => {
+        const color = colors[cat] || defaultColors[colorIdx++ % defaultColors.length];
+        return {
+          label: cat,
+          data: categories[cat],
+          color: color,
+          fill: true,
+        };
+      });
+
+      container.innerHTML = `
+        <div class="chart-container" style="height:300px">
+          <canvas id="allocationHistoryChart"></canvas>
+        </div>
+      `;
+
+      requestAnimationFrame(async () => {
+        await Charts.line('allocationHistoryChart',
+          dates.map(d => Utils.formatDate(d)),
+          datasets
+        );
+      });
+    } catch (err) {
+      container.innerHTML = '<div class="empty-state" style="padding:24px"><p>Could not load allocation history.</p></div>';
+    }
   },
 };

@@ -31,11 +31,12 @@ router.get('/', (req, res) => {
 
 router.put('/', (req, res) => {
   try {
-    const { name, currency, targetAllocation, salaryStructure, epfNpsConfig, monthly_ctc, basic_salary, epf_pct, nps_pct, nps_equity_pct, nps_debt_pct } = req.body;
+    const { name, currency, age, targetAllocation, salaryStructure, epfNpsConfig, monthly_ctc, basic_salary, epf_pct, nps_pct, nps_equity_pct, nps_debt_pct } = req.body;
     const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
 
     if (name !== undefined) upsert.run('name', name);
     if (currency !== undefined) upsert.run('currency', currency);
+    if (age !== undefined) upsert.run('age', String(age));
     if (monthly_ctc !== undefined) upsert.run('monthly_ctc', String(monthly_ctc));
     if (basic_salary !== undefined) upsert.run('basic_salary', String(basic_salary));
     if (epf_pct !== undefined) upsert.run('epf_pct', String(epf_pct));
@@ -77,7 +78,6 @@ router.get('/export', (req, res) => {
       settings: db.prepare('SELECT * FROM settings').all(),
       targetAllocation: db.prepare('SELECT * FROM target_allocation').all(),
       bankAccounts: (() => { try { return db.prepare('SELECT * FROM bank_accounts').all(); } catch { return []; } })(),
-      users: (() => { try { return db.prepare('SELECT * FROM users').all(); } catch { return []; } })(),
       exportedAt: new Date().toISOString()
     };
     res.json({ success: true, data });
@@ -93,8 +93,8 @@ router.post('/import', (req, res) => {
     const txn = db.transaction(() => {
       if (data.assets) {
         db.prepare('DELETE FROM assets').run();
-        const stmt = db.prepare(`INSERT INTO assets (id,name,category,subtype,invested_value,current_value,units,ticker,notes,currency,fx_rate,interest_rate,tenure_months,maturity_value,bank_name,fund_house,monthly_contribution,asset_class,fund_type,sip_amount,sip_date,purchase_date,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-        data.assets.forEach(a => stmt.run(a.id, a.name, a.category, a.subtype, a.invested_value, a.current_value, a.units, a.ticker, a.notes, a.currency || 'INR', a.fx_rate || 1, a.interest_rate || 0, a.tenure_months || 0, a.maturity_value || 0, a.bank_name || '', a.fund_house || '', a.monthly_contribution || 0, a.asset_class || '', a.fund_type || '', a.sip_amount || 0, a.sip_date || 0, a.purchase_date || '', a.updated_at, a.created_at));
+        const stmt = db.prepare(`INSERT INTO assets (id,name,category,subtype,invested_value,current_value,units,ticker,notes,currency,fx_rate,interest_rate,tenure_months,maturity_value,bank_name,fund_house,monthly_contribution,asset_class,fund_type,sip_amount,sip_date,purchase_date,retirement_subtype,nps_equity_pct,nps_debt_pct,previous_value,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+        data.assets.forEach(a => stmt.run(a.id, a.name, a.category, a.subtype, a.invested_value, a.current_value, a.units, a.ticker, a.notes, a.currency || 'INR', a.fx_rate || 1, a.interest_rate || 0, a.tenure_months || 0, a.maturity_value || 0, a.bank_name || '', a.fund_house || '', a.monthly_contribution || 0, a.asset_class || '', a.fund_type || '', a.sip_amount || 0, a.sip_date || 0, a.purchase_date || '', a.retirement_subtype || '', a.nps_equity_pct || 75, a.nps_debt_pct || 25, a.previous_value || 0, a.updated_at, a.created_at));
       }
       if (data.liabilities) {
         db.prepare('DELETE FROM liabilities').run();
@@ -134,10 +134,14 @@ router.post('/import', (req, res) => {
 
 // ─── Cloud Backup endpoints ─────────────────────
 router.get('/cloud-backup/status', (req, res) => {
+  const lastBackup = db.prepare("SELECT value FROM settings WHERE key = 'last_backup_time'").get();
+  const lastRestore = db.prepare("SELECT value FROM settings WHERE key = 'last_restore_time'").get();
   res.json({
     success: true,
     data: {
       enabled: cloudBackup.enabled,
+      lastBackupTime: lastBackup?.value || null,
+      lastRestoreTime: lastRestore?.value || null,
       message: cloudBackup.enabled
         ? 'Cloud backup is active (GitHub Gist). Data auto-saves after changes and every 5 minutes.'
         : 'Cloud backup is disabled. Set GITHUB_TOKEN and GIST_ID environment variables to enable.'

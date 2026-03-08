@@ -73,7 +73,7 @@ const API = {
   updateAsset(id, data) { return this.request(`/assets/${id}`, { method: 'PUT', body: data }); },
   deleteAsset(id) { return this.request(`/assets/${id}`, { method: 'DELETE' }); },
   bulkAssets(assets) { return this.request('/assets/bulk', { method: 'POST', body: { assets } }); },
-  getAssetAllocation() { return this.request('/assets/allocation'); },
+  getAssetAllocation(params = {}) { const qs = new URLSearchParams(params).toString(); return this.request('/assets/allocation' + (qs ? '?' + qs : '')); },
   getAssetNames() { return this.request('/assets/names'); },
   mergeAssetDuplicates() { return this.request('/assets/merge-duplicates', { method: 'POST' }); },
   getAssetFilters() { return this.request('/assets/filters'); },
@@ -116,6 +116,7 @@ const API = {
   getSnapshots() { return this.request('/snapshots'); },
   takeSnapshot() { return this.request('/snapshots', { method: 'POST' }); },
   deleteSnapshot(id) { return this.request(`/snapshots/${id}`, { method: 'DELETE' }); },
+  updateSnapshot(id, data) { return this.request(`/snapshots/${id}`, { method: 'PUT', body: data }); },
 
   // Essentials
   getEssentials() { return this.request('/essentials'); },
@@ -167,6 +168,68 @@ const API = {
   // AI Insights
   getAIInsight(type, data = {}) { return this.request('/ai/insight', { method: 'POST', body: { type, data } }); },
   getAIStatus() { return this.request('/ai/status'); },
+
+  // AI Chat
+  chatWithAI(message) { return this.request('/ai/chat', { method: 'POST', body: { message } }); },
+
+  // News
+  getNews() { return this.request('/news'); },
+  getArticleContent(url) { return this.request('/news/article?url=' + encodeURIComponent(url)); },
+
+  // Gold-Silver Ratio
+  getGoldSilverRatio() { return this.request('/market/gold-silver-ratio'); },
+
+  // Portfolio vs Index Comparison
+  getPortfolioVsIndex() { return this.request('/market/portfolio-vs-index'); },
+
+  // Bulk Delete
+  bulkDeleteAssets(ids) { return this.request('/assets/bulk-delete', { method: 'POST', body: { ids } }); },
+
+  // Emergency Fund Asset Linking
+  getEmergencyFundAssets() { return this.request('/assets/emergency-fund/linked'); },
+  toggleAssetEmergencyFund(id) { return this.request(`/assets/${id}/toggle-emergency-fund`, { method: 'POST' }); },
+
+  // Profiles (Family)
+  getProfiles() { return this.request('/profiles'); },
+  getProfileSummary() { return this.request('/profiles/summary'); },
+  createProfile(data) { return this.request('/profiles', { method: 'POST', body: data }); },
+  updateProfile(id, data) { return this.request(`/profiles/${id}`, { method: 'PUT', body: data }); },
+  deleteProfile(id) { return this.request(`/profiles/${id}`, { method: 'DELETE' }); },
+
+  // Budgets
+  getBudgets() { return this.request('/budgets'); },
+  getBudgetStatus() { return this.request('/budgets/status'); },
+  saveBudget(data) { return this.request('/budgets', { method: 'POST', body: data }); },
+  deleteBudget(id) { return this.request(`/budgets/${id}`, { method: 'DELETE' }); },
+
+  // Asset Transactions
+  getAssetTransactions(assetId) { return this.request(`/assets/${assetId}/transactions`); },
+  addAssetTransaction(assetId, data) { return this.request(`/assets/${assetId}/transactions`, { method: 'POST', body: data }); },
+  deleteAssetTransaction(txnId) { return this.request(`/assets/transactions/${txnId}`, { method: 'DELETE' }); },
+
+  // Recurring Transactions
+  getRecurringTransactions() { return this.request('/transactions/recurring'); },
+  setRecurring(id, data) { return this.request(`/transactions/${id}/recurring`, { method: 'PUT', body: data }); },
+
+  // Goal-Asset Linking
+  getGoalAssets(goalId) { return this.request(`/goals/${goalId}/assets`); },
+  linkGoalAssets(goalId, assetIds) { return this.request(`/goals/${goalId}/link-assets`, { method: 'POST', body: { assetIds } }); },
+
+  // Tax Report
+  getTaxReport() { return this.request('/assets/tax-report'); },
+
+  // SIP Calendar
+  getSipCalendar() { return this.request('/assets/sip-calendar'); },
+
+  // Amortization
+  getAmortization(liabilityId) { return this.request(`/liabilities/${liabilityId}/amortization`); },
+
+  // XIRR
+  getAssetXirr(assetId) { return this.request(`/assets/${assetId}/xirr`); },
+  getPortfolioXirr() { return this.request('/assets/portfolio-xirr'); },
+
+  // Allocation History
+  getAllocationHistory() { return this.request('/snapshots/allocation-history'); },
 
   // Auth
   getAuthStatus() { return this.request('/auth/status'); },

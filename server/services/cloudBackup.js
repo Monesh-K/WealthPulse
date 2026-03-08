@@ -49,10 +49,10 @@ function importAllData(data) {
   const txn = db.transaction(() => {
     if (data.assets?.length) {
       db.prepare('DELETE FROM assets').run();
-      const stmt = db.prepare(`INSERT INTO assets (id,name,category,subtype,invested_value,current_value,units,ticker,notes,currency,fx_rate,interest_rate,tenure_months,maturity_value,bank_name,fund_house,monthly_contribution,asset_class,fund_type,sip_amount,sip_date,purchase_date,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      const stmt = db.prepare(`INSERT INTO assets (id,name,category,subtype,invested_value,current_value,units,ticker,notes,currency,fx_rate,interest_rate,tenure_months,maturity_value,bank_name,fund_house,monthly_contribution,asset_class,fund_type,sip_amount,sip_date,purchase_date,retirement_subtype,nps_equity_pct,nps_debt_pct,previous_value,updated_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       data.assets.forEach(a => {
         try {
-          stmt.run(a.id, a.name, a.category, a.subtype, a.invested_value, a.current_value, a.units, a.ticker, a.notes, a.currency || 'INR', a.fx_rate || 1, a.interest_rate || 0, a.tenure_months || 0, a.maturity_value || 0, a.bank_name || '', a.fund_house || '', a.monthly_contribution || 0, a.asset_class || '', a.fund_type || '', a.sip_amount || 0, a.sip_date || 0, a.purchase_date || '', a.updated_at, a.created_at);
+          stmt.run(a.id, a.name, a.category, a.subtype, a.invested_value, a.current_value, a.units, a.ticker, a.notes, a.currency || 'INR', a.fx_rate || 1, a.interest_rate || 0, a.tenure_months || 0, a.maturity_value || 0, a.bank_name || '', a.fund_house || '', a.monthly_contribution || 0, a.asset_class || '', a.fund_type || '', a.sip_amount || 0, a.sip_date || 0, a.purchase_date || '', a.retirement_subtype || '', a.nps_equity_pct || 75, a.nps_debt_pct || 25, a.previous_value || 0, a.updated_at, a.created_at);
         } catch (e) { console.warn('[CloudBackup] Skip asset:', e.message); }
       });
     }
@@ -161,6 +161,10 @@ async function restoreFromCloud() {
     const assetCount = db.prepare('SELECT COUNT(*) as c FROM assets').get().c;
     const txnCount = db.prepare('SELECT COUNT(*) as c FROM transactions').get().c;
     console.log(`[CloudBackup] ✅ Restored: ${assetCount} assets, ${txnCount} transactions`);
+    // Store last restore timestamp
+    try {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('last_restore_time', new Date().toISOString());
+    } catch (e) { /* ignore */ }
     return true;
   } catch (e) {
     console.error('[CloudBackup] ❌ Restore failed:', e.message);
@@ -201,6 +205,10 @@ async function saveToCloud() {
     }
 
     console.log(`[CloudBackup] ✅ Saved at ${new Date().toISOString()}`);
+    // Store last backup timestamp in settings
+    try {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('last_backup_time', new Date().toISOString());
+    } catch (e) { /* ignore */ }
     return true;
   } catch (e) {
     console.error('[CloudBackup] ❌ Save failed:', e.message);

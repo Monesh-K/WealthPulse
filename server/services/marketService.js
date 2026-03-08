@@ -222,26 +222,70 @@ async function fetchUSStockPrice(symbol) {
 }
 
 // ─── Gold & Forex ─────────────────────────────────
-async function fetchGoldPrice() {
-  const cacheKey = 'gold_inr';
+// 1 troy ounce = 31.1035 grams
+const TROY_OZ_TO_GRAM = 31.1035;
+
+async function fetchMetalPriceINR(yahooSymbol, cacheKey) {
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
   try {
-    const data = await fetchJSON('https://api.metals.dev/v1/latest?api_key=demo&currency=INR&unit=gram');
-    if (data?.metals?.gold) {
-      const price = data.metals.gold;
-      setCache(cacheKey, price);
-      return price;
+    const data = await fetchJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${yahooSymbol}?interval=1d&range=1d`);
+    const priceUSD = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+    if (priceUSD) {
+      const fxRate = await fetchForexRate();
+      // Convert from USD/troy oz → INR/gram
+      const priceINR = (priceUSD * fxRate) / TROY_OZ_TO_GRAM;
+      const rounded = Math.round(priceINR * 100) / 100;
+      setCache(cacheKey, rounded);
+      return rounded;
     }
-  } catch (e) { console.warn('[Market] Gold price fetch failed:', e.message); }
+  } catch (e) { console.warn(`[Market] Metal price fetch failed for ${yahooSymbol}:`, e.message); }
+  return null;
+}
 
-  try {
-    const fxRate = await fetchForexRate();
-    const approxPrice = 70 * fxRate;
-    setCache(cacheKey, Math.round(approxPrice));
-    return Math.round(approxPrice);
-  } catch { return null; }
+async function fetchGoldPrice() {
+  // GC=F = Gold Futures (USD/troy oz) on COMEX
+  return fetchMetalPriceINR('GC=F', 'gold_inr');
+}
+
+async function fetchSilverPrice() {
+  // SI=F = Silver Futures (USD/troy oz) on COMEX
+  return fetchMetalPriceINR('SI=F', 'silver_inr');
+}
+
+async function getGoldSilverRatio() {
+  const goldPrice = await fetchGoldPrice();
+  const silverPrice = await fetchSilverPrice();
+
+  if (!goldPrice || !silverPrice) {
+    return { success: false, error: 'Could not fetch metal prices' };
+  }
+
+  const ratio = goldPrice / silverPrice;
+  const historicalAvg = 65;
+
+  let assessment, suggestion;
+  if (ratio > 80) {
+    assessment = 'Silver appears undervalued';
+    suggestion = 'The gold-silver ratio is historically high. Silver may offer better value at current prices.';
+  } else if (ratio < 50) {
+    assessment = 'Gold appears undervalued';
+    suggestion = 'The gold-silver ratio is historically low. Gold may offer better value at current prices.';
+  } else {
+    assessment = 'Normal range';
+    suggestion = 'The gold-silver ratio is within the normal historical range (50-80).';
+  }
+
+  return {
+    success: true,
+    goldPrice: Math.round(goldPrice * 100) / 100,
+    silverPrice: Math.round(silverPrice * 100) / 100,
+    ratio: Math.round(ratio * 100) / 100,
+    historicalAvg,
+    assessment,
+    suggestion
+  };
 }
 
 async function fetchForexRate() {
@@ -280,7 +324,7 @@ async function refreshMFPrices(db) {
         const nav = await fetchMFNav(schemeCode);
         if (nav) {
           const newValue = Math.round(nav * asset.units * 100) / 100;
-          db.prepare(`UPDATE assets SET current_value = ?, updated_at = date('now') WHERE id = ?`)
+          db.prepare(`UPDATE assets SET previous_value = current_value, current_value = ?, updated_at = date('now') WHERE id = ?`)
             .run(newValue, asset.id);
           updated++;
         }
@@ -315,7 +359,7 @@ async function refreshIndianStockPrices(db) {
       const price = await fetchStockPrice(ticker);
       if (price) {
         const newValue = Math.round(price * asset.units * 100) / 100;
-        db.prepare(`UPDATE assets SET current_value = ?, updated_at = date('now') WHERE id = ?`)
+        db.prepare(`UPDATE assets SET previous_value = current_value, current_value = ?, updated_at = date('now') WHERE id = ?`)
           .run(newValue, asset.id);
         updated++;
       }
@@ -347,7 +391,7 @@ async function refreshUSStockPrices(db) {
       const price = await fetchUSStockPrice(symbol);
       if (price) {
         const valueUSD = Math.round(price * asset.units * 100) / 100;
-        db.prepare(`UPDATE assets SET current_value = ?, fx_rate = ?, updated_at = date('now') WHERE id = ?`)
+        db.prepare(`UPDATE assets SET previous_value = current_value, current_value = ?, fx_rate = ?, updated_at = date('now') WHERE id = ?`)
           .run(valueUSD, fxRate, asset.id);
         updated++;
       }
@@ -392,7 +436,7 @@ async function refreshAllPrices(db) {
           const price = await fetchUSStockPrice(symbol);
           if (price) {
             const valueUSD = Math.round(price * asset.units * 100) / 100;
-            db.prepare(`UPDATE assets SET fx_rate = ?, current_value = ?, updated_at = date('now') WHERE id = ?`)
+            db.prepare(`UPDATE assets SET previous_value = current_value, fx_rate = ?, current_value = ?, updated_at = date('now') WHERE id = ?`)
               .run(fxRate, valueUSD, asset.id);
             updated++;
             await delay(300);
@@ -414,7 +458,7 @@ async function refreshAllPrices(db) {
       }
 
       if (newValue !== null) {
-        db.prepare(`UPDATE assets SET current_value = ?, updated_at = date('now') WHERE id = ?`)
+        db.prepare(`UPDATE assets SET previous_value = current_value, current_value = ?, updated_at = date('now') WHERE id = ?`)
           .run(newValue, asset.id);
         updated++;
       }
@@ -439,7 +483,7 @@ async function refreshAllPrices(db) {
       const fraction = Math.min(1, elapsed / fd.tenure_months);
       const currentVal = fd.invested_value + (maturity - fd.invested_value) * fraction;
 
-      db.prepare(`UPDATE assets SET current_value = ?, maturity_value = ?, updated_at = date('now') WHERE id = ?`)
+      db.prepare(`UPDATE assets SET previous_value = current_value, current_value = ?, maturity_value = ?, updated_at = date('now') WHERE id = ?`)
         .run(Math.round(currentVal), Math.round(maturity), fd.id);
       updated++;
     }
@@ -459,7 +503,8 @@ function saveLastRefreshTime(db, type) {
 module.exports = {
   fetchMFNav, searchMF, resolveMFSchemeCode,
   fetchStockPrice, fetchUSStockPrice, resolveISINToTicker,
-  fetchGoldPrice, fetchForexRate,
+  fetchGoldPrice, fetchSilverPrice, fetchForexRate,
+  getGoldSilverRatio,
   refreshAllPrices,
   refreshMFPrices,
   refreshIndianStockPrices,

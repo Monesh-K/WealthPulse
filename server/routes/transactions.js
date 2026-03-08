@@ -79,7 +79,22 @@ router.get('/summary', (req, res) => {
       GROUP BY strftime('%Y-%m', date), type
       ORDER BY month DESC
     `).all(String(safeMonths));
-    res.json({ success: true, data });
+
+    // Investment expenses per month (treated as savings, not true expenses)
+    const investmentExpenses = db.prepare(`
+      SELECT
+        strftime('%Y-%m', date) as month,
+        SUM(amount) as total
+      FROM transactions
+      WHERE date >= date('now', '-' || ? || ' months')
+        AND type = 'expense'
+        AND category = 'Investment'
+      GROUP BY strftime('%Y-%m', date)
+    `).all(String(safeMonths));
+    const investmentByMonth = {};
+    investmentExpenses.forEach(r => { investmentByMonth[r.month] = r.total; });
+
+    res.json({ success: true, data, investmentByMonth });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
@@ -151,6 +166,23 @@ router.get('/subcategory-list', (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// ─── Recurring Transactions ──────────────────────
+// List all recurring transactions
+router.get('/recurring', (req, res) => {
+  try {
+    const data = db.prepare('SELECT * FROM transactions WHERE is_recurring = 1 ORDER BY next_due_date ASC').all();
+    res.json({ success: true, data });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Generate due recurring transactions
+router.post('/generate-recurring', (req, res) => {
+  try {
+    const result = generateRecurringTransactions();
+    res.json({ success: true, ...result });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
 router.post('/', (req, res) => {
   try {
     const { type, amount, description, category, subcategory, date, bank_account } = req.body;
@@ -178,6 +210,26 @@ router.put('/:id', (req, res) => {
       .run(type || existing.type, Math.abs(amount || existing.amount), description ?? existing.description,
         category || existing.category, subcategory ?? existing.subcategory,
         date || existing.date, bank_account ?? existing.bank_account, req.params.id);
+    res.json({ success: true, data: db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id) });
+  } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+});
+
+// Set a transaction as recurring
+router.put('/:id/recurring', (req, res) => {
+  try {
+    const existing = db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Transaction not found' });
+
+    const { is_recurring, frequency, next_due_date } = req.body;
+    const validFrequencies = ['monthly', 'quarterly', 'yearly'];
+
+    if (is_recurring && !validFrequencies.includes(frequency)) {
+      return res.status(400).json({ success: false, error: 'Frequency must be monthly, quarterly, or yearly' });
+    }
+
+    db.prepare('UPDATE transactions SET is_recurring = ?, frequency = ?, next_due_date = ? WHERE id = ?')
+      .run(is_recurring ? 1 : 0, is_recurring ? frequency : null, is_recurring ? (next_due_date || null) : null, req.params.id);
+
     res.json({ success: true, data: db.prepare('SELECT * FROM transactions WHERE id = ?').get(req.params.id) });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
@@ -211,4 +263,50 @@ router.delete('/:id', (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
+// ─── Helper: Generate due recurring transactions ───
+function generateRecurringTransactions() {
+  const today = new Date().toISOString().split('T')[0];
+  const recurring = db.prepare("SELECT * FROM transactions WHERE is_recurring = 1 AND next_due_date IS NOT NULL AND next_due_date <= ?").all(today);
+
+  let generated = 0;
+  const txn = db.transaction(() => {
+    for (const r of recurring) {
+      // Create new transaction with the due date
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + generated;
+      db.prepare('INSERT INTO transactions (id, type, amount, description, category, subcategory, date, bank_account) VALUES (?,?,?,?,?,?,?,?)')
+        .run(id, r.type, r.amount, r.description || '', r.category || 'Other', r.subcategory || '', r.next_due_date, r.bank_account || '');
+
+      // Advance next_due_date based on frequency
+      const dueDate = new Date(r.next_due_date);
+      let nextDate;
+      switch (r.frequency) {
+        case 'monthly':
+          nextDate = new Date(dueDate);
+          nextDate.setMonth(nextDate.getMonth() + 1);
+          break;
+        case 'quarterly':
+          nextDate = new Date(dueDate);
+          nextDate.setMonth(nextDate.getMonth() + 3);
+          break;
+        case 'yearly':
+          nextDate = new Date(dueDate);
+          nextDate.setFullYear(nextDate.getFullYear() + 1);
+          break;
+        default:
+          nextDate = new Date(dueDate);
+          nextDate.setMonth(nextDate.getMonth() + 1);
+      }
+
+      db.prepare('UPDATE transactions SET next_due_date = ? WHERE id = ?')
+        .run(nextDate.toISOString().split('T')[0], r.id);
+
+      generated++;
+    }
+  });
+  txn();
+
+  return { generated, message: `Generated ${generated} recurring transactions` };
+}
+
 module.exports = router;
+module.exports.generateRecurringTransactions = generateRecurringTransactions;

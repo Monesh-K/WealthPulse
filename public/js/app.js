@@ -13,6 +13,9 @@ const App = {
     essentials: EssentialsPage,
     calculators: CalculatorsPage,
     settings: SettingsPage,
+    marketcharts: MarketChartsPage,
+    news: NewsPage,
+    aichat: AIChatPage,
   },
 
   currentPage: null,
@@ -108,6 +111,9 @@ const App = {
       essentials: 'Financial Essentials',
       calculators: 'Financial Calculators',
       settings: 'Settings',
+      marketcharts: 'Market Charts',
+      news: 'Financial News',
+      aichat: 'AI Chat',
     };
     document.getElementById('pageTitle').textContent = titles[hash] || 'WealthPulse';
 
@@ -131,17 +137,6 @@ const App = {
     document.documentElement.setAttribute('data-theme', next);
     localStorage.setItem('wp_theme', next);
     this.updateThemeIcon();
-
-    // Re-render current page with new theme colors (charts need theme update)
-    const page = this.pages[this.currentPage];
-    if (page) {
-      Charts.destroyAll();
-      (async () => {
-        const container = document.getElementById('pageContainer');
-        container.innerHTML = await page.render();
-        if (page.init) await page.init();
-      })();
-    }
   },
 
   updateThemeIcon() {

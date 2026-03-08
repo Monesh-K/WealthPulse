@@ -64,7 +64,7 @@ const SettingsPage = {
   renderContent() {
     const s = this.settings;
     const alloc = s.targetAllocation || {};
-    const cats = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'International', 'Crypto'];
+    const cats = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'International', 'Crypto', 'Retirement'];
     const salary = s.salaryStructure || {};
     const epfNps = s.epfNpsConfig || {};
 
@@ -74,9 +74,15 @@ const SettingsPage = {
         <div class="card">
           <div class="card-header"><div class="card-title">👤 Profile</div></div>
           <form onsubmit="SettingsPage.saveProfile(event)">
-            <div class="form-group">
-              <label>Name</label>
-              <input class="form-control" name="name" value="${Utils.esc(s.name || 'User')}">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Name</label>
+                <input class="form-control" name="name" value="${Utils.esc(s.name || 'User')}">
+              </div>
+              <div class="form-group">
+                <label>Age</label>
+                <input class="form-control" type="number" name="age" min="1" max="120" value="${Utils.esc(s.age || '')}" placeholder="e.g. 30">
+              </div>
             </div>
             <div class="form-group">
               <label>Currency</label>
@@ -108,6 +114,20 @@ const SettingsPage = {
               <button type="submit" class="btn btn-primary btn-sm">Save Allocation</button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <!-- Family Profiles -->
+      <div class="card mt-24">
+        <div class="card-header">
+          <div class="card-title">👨‍👩‍👧‍👦 Family Profiles</div>
+          <button class="btn btn-primary btn-sm" onclick="SettingsPage.openProfileForm()">+ Add Profile</button>
+        </div>
+        <p class="text-muted" style="font-size:0.82rem; margin-bottom:16px">Manage family member profiles to track net worth separately</p>
+        <div id="familyProfilesList">
+          <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:0.85rem;padding:12px 0">
+            <div class="spinner" style="width:14px;height:14px;border-width:2px"></div> Loading profiles...
+          </div>
         </div>
       </div>
 
@@ -251,6 +271,7 @@ const SettingsPage = {
 
     this.previewEPF();
     this.loadCloudBackupStatus();
+    this.loadFamilyProfiles();
   },
 
   async loadCloudBackupStatus() {
@@ -265,6 +286,8 @@ const SettingsPage = {
             <span style="font-size:0.9rem;font-weight:600;color:var(--green)">Active</span>
             <span class="text-muted" style="font-size:0.82rem">— Data auto-saves to GitHub Gist after changes, every 5 min, and on shutdown</span>
           </div>
+          ${res.data.lastBackupTime ? `<div class="text-muted" style="font-size:0.82rem;margin-bottom:8px">Last backup: ${new Date(res.data.lastBackupTime).toLocaleString()}</div>` : ''}
+          ${res.data.lastRestoreTime ? `<div class="text-muted" style="font-size:0.82rem;margin-bottom:8px">Last restore: ${new Date(res.data.lastRestoreTime).toLocaleString()}</div>` : ''}
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-outline btn-sm" onclick="SettingsPage.cloudBackupSave()">⬆️ Save Now</button>
             <button class="btn btn-outline btn-sm" onclick="SettingsPage.cloudBackupRestore()">⬇️ Restore from Cloud</button>
@@ -308,7 +331,7 @@ const SettingsPage = {
   },
 
   updateAllocTotal() {
-    const cats = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'International', 'Crypto'];
+    const cats = ['Equity', 'Debt', 'Gold', 'Cash', 'Real Estate', 'International', 'Crypto', 'Retirement'];
     const form = document.querySelector('[onsubmit="SettingsPage.saveAllocation(event)"]');
     if (!form) return;
     const total = cats.reduce((s, c) => {
@@ -468,8 +491,9 @@ const SettingsPage = {
         const data = {
           name: 'Employee Provident Fund (EPF)',
           asset_class: 'Fixed Income',
-          category: 'Debt',
+          category: 'Retirement',
           subtype: 'EPF',
+          retirement_subtype: 'EPF',
           invested_value: config.epf_balance,
           current_value: config.epf_balance,
           interest_rate: config.epf_interest_rate || 8.25,
@@ -489,8 +513,9 @@ const SettingsPage = {
         const data = {
           name: 'National Pension System (NPS)',
           asset_class: 'Fixed Income',
-          category: 'Equity',
+          category: 'Retirement',
           subtype: 'NPS',
+          retirement_subtype: 'NPS',
           invested_value: config.nps_balance,
           current_value: config.nps_balance,
           monthly_contribution: npsMonthly,
@@ -504,6 +529,143 @@ const SettingsPage = {
     } catch (err) {
       console.error('EPF/NPS asset sync failed:', err);
     }
+  },
+
+  // ─── Family Profiles ────────────────────────────
+  async loadFamilyProfiles() {
+    const container = document.getElementById('familyProfilesList');
+    if (!container) return;
+
+    try {
+      const res = await API.getProfiles();
+      const profiles = res.data || [];
+      const profileColors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6', '#14b8a6', '#f97316'];
+
+      if (!profiles.length) {
+        container.innerHTML = `
+          <div class="empty-state" style="padding:24px">
+            <p class="text-muted">No profiles yet. Add family members to track their finances separately.</p>
+            <button class="btn btn-primary btn-sm" onclick="SettingsPage.openProfileForm()" style="margin-top:8px">+ Add Profile</button>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${profiles.map((p, i) => {
+            const color = p.color || profileColors[i % profileColors.length];
+            const assetCount = p.assetCount || 0;
+            return `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg-secondary);border-radius:8px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:12px;height:12px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0"></span>
+                  <div>
+                    <strong style="font-size:0.9rem">${Utils.esc(p.name)}</strong>
+                    ${p.relationship ? `<span class="text-muted" style="font-size:0.8rem;margin-left:6px">(${Utils.esc(p.relationship)})</span>` : ''}
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span class="text-muted" style="font-size:0.8rem">${assetCount} asset${assetCount !== 1 ? 's' : ''}</span>
+                  <div class="btn-group">
+                    <button class="btn-icon" onclick="SettingsPage.openProfileForm('${p.id}')" title="Edit">✏️</button>
+                    <button class="btn-icon danger" onclick="SettingsPage.deleteProfile('${p.id}')" title="Delete">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } catch (err) {
+      container.innerHTML = `<p class="text-muted" style="font-size:0.85rem">Could not load profiles.</p>`;
+    }
+  },
+
+  openProfileForm(id) {
+    // If editing, find the profile from the DOM data or re-fetch
+    const isEdit = !!id;
+
+    // Pre-fill fields if editing - we'll fetch the data
+    if (isEdit) {
+      this._openProfileFormWithData(id);
+    } else {
+      this._renderProfileModal({}, false);
+    }
+  },
+
+  async _openProfileFormWithData(id) {
+    try {
+      const res = await API.getProfiles();
+      const profiles = res.data || [];
+      const profile = profiles.find(p => p.id === id) || {};
+      this._renderProfileModal(profile, true);
+    } catch {
+      this._renderProfileModal({}, false);
+    }
+  },
+
+  _renderProfileModal(profile, isEdit) {
+    const colorOptions = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6', '#14b8a6', '#f97316', '#ef4444', '#64748b'];
+
+    Modal.open(isEdit ? 'Edit Profile' : 'Add Profile', `
+      <form onsubmit="SettingsPage.saveProfile2(event, '${profile.id || ''}')">
+        <div class="form-group">
+          <label>Name *</label>
+          <input class="form-control" name="name" value="${Utils.esc(profile.name || '')}" required placeholder="e.g. Spouse, Child">
+        </div>
+        <div class="form-group">
+          <label>Relationship</label>
+          <select class="form-control" name="relationship">
+            <option value="">Select...</option>
+            ${['Self', 'Spouse', 'Child', 'Parent', 'Sibling', 'Other'].map(r =>
+              `<option value="${r}" ${profile.relationship === r ? 'selected' : ''}>${r}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Color</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+            ${colorOptions.map(c => `
+              <label style="cursor:pointer">
+                <input type="radio" name="color" value="${c}" ${(profile.color || '#6366f1') === c ? 'checked' : ''} style="display:none">
+                <span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:${c};border:3px solid ${(profile.color || '#6366f1') === c ? 'var(--text-primary)' : 'transparent'};transition:border 0.15s"></span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-outline" onclick="Modal.close()">Cancel</button>
+          <button type="submit" class="btn btn-primary">${isEdit ? 'Update' : 'Add'} Profile</button>
+        </div>
+      </form>
+    `);
+  },
+
+  async saveProfile2(e, id) {
+    e.preventDefault();
+    const form = Object.fromEntries(new FormData(e.target));
+    try {
+      if (id) {
+        await API.updateProfile(id, form);
+        Toast.success('Profile updated!');
+      } else {
+        await API.createProfile(form);
+        Toast.success('Profile added!');
+      }
+      Modal.close();
+      this.loadFamilyProfiles();
+    } catch (err) { Toast.error(err.message); }
+  },
+
+  async deleteProfile(id) {
+    const ok = await Modal.confirm('Delete Profile', 'Delete this family profile? Assets assigned to it will be unlinked.');
+    if (!ok) return;
+    try {
+      await API.deleteProfile(id);
+      Toast.success('Profile deleted');
+      this.loadFamilyProfiles();
+    } catch (e) { Toast.error(e.message); }
   },
 
   async getAISalaryInsight() {
