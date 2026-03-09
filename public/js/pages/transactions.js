@@ -34,20 +34,20 @@ const TransactionsPage = {
       <div class="card" style="padding:12px 16px; margin-bottom:16px">
         <div class="asset-filter-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
           <span style="font-weight:600; font-size:0.85rem; color:var(--text-secondary)">Filter:</span>
-          <input type="text" class="form-control" id="txnSearchInput" placeholder="Search..." style="width:auto; min-width:140px; padding:6px 10px; font-size:0.85rem" oninput="TransactionsPage.onSearchInput(this.value)">
-          <select class="form-control" id="txnFilterType" style="width:auto; min-width:110px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()">
+          <input type="text" class="form-control" id="txnSearchInput" placeholder="Search..." style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem" oninput="TransactionsPage.onSearchInput(this.value)">
+          <select class="form-control" id="txnFilterType" style="width:auto; flex:1; min-width:80px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()">
             <option value="">All Types</option>
             <option value="income">Income</option>
             <option value="expense">Expense</option>
           </select>
-          <select class="form-control" id="txnFilterCategory" style="width:auto; min-width:140px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onCategoryFilterChange()">
+          <select class="form-control" id="txnFilterCategory" style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onCategoryFilterChange()">
             <option value="">All Categories</option>
           </select>
-          <select class="form-control" id="txnFilterSubcategory" style="width:auto; min-width:150px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()">
+          <select class="form-control" id="txnFilterSubcategory" style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()">
             <option value="">All Subcategories</option>
           </select>
-          <input type="date" class="form-control" id="txnDateFrom" style="width:auto; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()" title="From date">
-          <input type="date" class="form-control" id="txnDateTo" style="width:auto; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()" title="To date">
+          <input type="date" class="form-control" id="txnDateFrom" style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()" title="From date">
+          <input type="date" class="form-control" id="txnDateTo" style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem" onchange="TransactionsPage.onFilterChange()" title="To date">
           <button class="btn btn-outline btn-sm" id="txnClearFilterBtn" style="display:none; padding:6px 12px; font-size:0.8rem" onclick="TransactionsPage.clearFilters()">✕ Clear</button>
         </div>
       </div>
@@ -84,7 +84,7 @@ const TransactionsPage = {
 
       const [txnRes, sumRes, bankRes] = await Promise.all([
         API.getTransactions(params),
-        API.getTransactionSummary(12),
+        API.getTransactionSummary(12, params),
         API.getBankAccounts().catch(() => ({ data: [] })),
       ]);
       this.items = txnRes.data || [];
@@ -174,46 +174,59 @@ const TransactionsPage = {
 
   renderStats() {
     const now = new Date();
-    const monthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+    // Last month
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthKey = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth()+1).padStart(2,'0')}`;
+    const lastMonthName = lastMonth.toLocaleString('default', { month: 'short', year: 'numeric' });
     const yearKey = `${now.getFullYear()}`;
 
-    // Current month stats
-    const monthIncome = this.summary.filter(s => s.month===monthKey && s.type==='income').reduce((s,r) => s+r.total, 0);
-    const monthExpense = this.summary.filter(s => s.month===monthKey && s.type==='expense').reduce((s,r) => s+r.total, 0);
+    // Check if any filters are active
+    const f = this.activeFilter;
+    const hasFilters = f.type || f.category || f.subcategory || f.search || f.dateFrom || f.dateTo;
+
+    // Last month stats (investments treated as savings, not expenses)
+    const monthIncome = this.summary.filter(s => s.month===lastMonthKey && s.type==='income').reduce((s,r) => s+r.total, 0);
+    const monthExpenseRaw = this.summary.filter(s => s.month===lastMonthKey && s.type==='expense').reduce((s,r) => s+r.total, 0);
+    const monthInvestment = this.investmentByMonth[lastMonthKey] || 0;
+    const monthExpense = monthExpenseRaw - monthInvestment;
     const monthSavings = monthIncome - monthExpense;
     const monthRate = monthIncome > 0 ? (monthSavings/monthIncome*100) : 0;
 
-    // Year-to-date stats
+    // Year-to-date stats (investments treated as savings)
     const yearIncome = this.summary.filter(s => s.month.startsWith(yearKey) && s.type==='income').reduce((s,r) => s+r.total, 0);
-    const yearExpense = this.summary.filter(s => s.month.startsWith(yearKey) && s.type==='expense').reduce((s,r) => s+r.total, 0);
+    const yearExpenseRaw = this.summary.filter(s => s.month.startsWith(yearKey) && s.type==='expense').reduce((s,r) => s+r.total, 0);
+    const yearInvestment = Object.entries(this.investmentByMonth).filter(([m]) => m.startsWith(yearKey)).reduce((s,[,v]) => s+v, 0);
+    const yearExpense = yearExpenseRaw - yearInvestment;
     const yearSavings = yearIncome - yearExpense;
     const yearRate = yearIncome > 0 ? (yearSavings/yearIncome*100) : 0;
     const monthsElapsed = now.getMonth() + 1;
     const avgMonthlyExpense = monthsElapsed > 0 ? yearExpense / monthsElapsed : 0;
 
+    const filterBadge = hasFilters ? '<span class="badge" style="background:var(--accent-bg);color:var(--accent);font-size:0.6rem;padding:1px 5px;border-radius:8px;margin-left:4px;vertical-align:middle">filtered</span>' : '';
+
     document.getElementById('txnStats').innerHTML = `
       <div class="stat-card green">
-        <div class="stat-label">This Month Income</div>
+        <div class="stat-label">${lastMonthName} Income${filterBadge}</div>
         <div class="stat-value">${Utils.currency(monthIncome)}</div>
         <div class="stat-sub">YTD: ${Utils.currency(yearIncome)}</div>
       </div>
       <div class="stat-card red">
-        <div class="stat-label">This Month Expenses</div>
+        <div class="stat-label">${lastMonthName} Expenses${filterBadge}</div>
         <div class="stat-value">${Utils.currency(monthExpense)}</div>
         <div class="stat-sub">YTD: ${Utils.currency(yearExpense)}</div>
       </div>
       <div class="stat-card ${monthSavings>=0?'green':'red'}">
-        <div class="stat-label">Month Savings</div>
+        <div class="stat-label">${lastMonthName} Savings${filterBadge}</div>
         <div class="stat-value ${Utils.gainColor(monthSavings)}">${Utils.currency(monthSavings)}</div>
         <div class="stat-sub">Rate: ${Utils.percent(monthRate)}</div>
       </div>
       <div class="stat-card ${yearSavings>=0?'green':'red'}">
-        <div class="stat-label">YTD Savings (${yearKey})</div>
+        <div class="stat-label">YTD Savings (${yearKey})${filterBadge}</div>
         <div class="stat-value ${Utils.gainColor(yearSavings)}">${Utils.currency(yearSavings)}</div>
         <div class="stat-sub">Rate: ${Utils.percent(yearRate)}</div>
       </div>
       <div class="stat-card blue">
-        <div class="stat-label">Avg Monthly Expense</div>
+        <div class="stat-label">Avg Monthly Expense${filterBadge}</div>
         <div class="stat-value">${Utils.currency(avgMonthlyExpense)}</div>
         <div class="stat-sub">${monthsElapsed} months in ${yearKey}</div>
       </div>
@@ -1159,6 +1172,7 @@ const TransactionsPage = {
   async saveRecurring(e, id) {
     e.preventDefault();
     const form = Object.fromEntries(new FormData(e.target));
+    form.is_recurring = true;
     try {
       await API.setRecurring(id, form);
       Toast.success('Transaction set as recurring!');

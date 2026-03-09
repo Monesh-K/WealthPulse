@@ -95,7 +95,13 @@ const API = {
     const qs = new URLSearchParams(params).toString();
     return this.request('/transactions' + (qs ? '?' + qs : ''));
   },
-  getTransactionSummary(months = 12) { return this.request(`/transactions/summary?months=${months}`); },
+  getTransactionSummary(months = 12, filters = {}) {
+    const p = { months, ...filters };
+    // Remove pagination params that don't apply to summary
+    delete p.page; delete p.pageSize;
+    const qs = new URLSearchParams(p).toString();
+    return this.request('/transactions/summary' + (qs ? '?' + qs : ''));
+  },
   getTransactionCategories(params = {}) {
     const qs = new URLSearchParams(params).toString();
     return this.request('/transactions/categories' + (qs ? '?' + qs : ''));

@@ -736,8 +736,9 @@ textarea.form-control { min-height: 80px; resize: vertical; }
   .form-row { grid-template-columns: 1fr; }
   .form-row-3 { grid-template-columns: 1fr; }
 
-  .filter-bar { flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .filter-bar .form-control { width: auto; flex: 1 1 0; min-width: 80px; }
+  .filter-bar { flex-direction: row; align-items: center; gap: 6px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .filter-bar::-webkit-scrollbar { display: none; }
+  .filter-bar .form-control { width: auto; flex: 1 1 0; min-width: 0; }
 
   .section-header { flex-direction: column; align-items: flex-start; }
   .responsive-btn-group { width: 100%; justify-content: flex-start; }
@@ -745,7 +746,48 @@ textarea.form-control { min-height: 80px; resize: vertical; }
   .card { padding: 16px; }
 
   .hide-mobile { display: none !important; }
+  .hide-mobile-inline { display: none !important; }
+  .hide-mobile-asset { display: none !important; }
   .show-mobile-only { display: block !important; }
+
+  /* Asset holdings: mobile accordion */
+  .asset-holdings-table { min-width: 0 !important; width: 100%; }
+  .asset-row { cursor: pointer; }
+  .asset-row.expanded { background: var(--bg-tertiary); }
+  .asset-detail-row { display: none; }
+  .asset-detail-row.open { display: table-row; }
+  .asset-detail-row td { padding: 0 !important; border-top: none !important; }
+  .asset-detail-content {
+    padding: 10px 12px 12px;
+    background: var(--bg-secondary);
+    border-bottom: 2px solid var(--accent);
+  }
+  .asset-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .asset-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .asset-detail-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .asset-detail-item .font-mono { font-size: 0.82rem; }
+  .asset-detail-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+  }
+  .asset-detail-actions .btn { font-size: 0.75rem; }
 
   .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
@@ -754,11 +796,11 @@ textarea.form-control { min-height: 80px; resize: vertical; }
   .asset-class-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
   .asset-class-tabs::-webkit-scrollbar { display: none; }
 
-  .asset-filter-row { flex-direction: row; align-items: center; gap: 6px; flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .asset-filter-row::-webkit-scrollbar { display: none; }
-  .asset-filter-row .form-control { width: auto !important; min-width: 0 !important; flex: 0 0 auto; padding: 5px 8px !important; font-size: 0.78rem !important; }
-  .asset-filter-row > span { display: none; }
+  .asset-filter-row { flex-direction: row !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important; }
+  .asset-filter-row .form-control { width: auto !important; min-width: 0 !important; flex: 1 1 calc(50% - 6px) !important; max-width: calc(50% - 3px) !important; padding: 5px 8px !important; font-size: 0.78rem !important; }
+  .asset-filter-row > span { display: none !important; }
   .asset-filter-row select.form-control { padding: 5px 28px 5px 8px !important; min-height: 32px !important; border-radius: 14px !important; }
+  .asset-filter-row .btn { flex: 0 0 auto !important; }
 
   .btn-group { flex-wrap: wrap; }
   .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
@@ -1247,7 +1289,13 @@ textarea.form-control { min-height: 80px; resize: vertical; }
 /* ===== Mobile helpers ===== */
 .show-mobile-only { display: none !important; }
 .hide-mobile { display: table-cell; }
+.hide-mobile-inline { display: block; }
+.hide-mobile-asset { display: table-cell; }
 .hide-tablet { display: table-cell; }
+
+/* ===== Asset detail accordion (hidden on desktop) ===== */
+.asset-detail-row { display: none; }
+.asset-row { cursor: default; }
 
 /* ===== Emergency banner ===== */
 .emergency-banner-inner {
@@ -1468,15 +1516,16 @@ textarea.form-control { min-height: 80px; resize: vertical; }
   .btn-group { flex-wrap: wrap; max-width: 100%; }
 
   /* Filter bars compact */
-  .filter-bar { flex-direction: row; align-items: center; gap: 6px; flex-wrap: nowrap !important; overflow-x: auto; }
+  .filter-bar { flex-direction: row; align-items: center; gap: 6px; flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .filter-bar::-webkit-scrollbar { display: none; }
   .filter-bar .form-control,
-  .filter-bar select.form-control { width: auto !important; min-width: 0 !important; flex: 0 0 auto; }
+  .filter-bar select.form-control { width: auto !important; min-width: 0 !important; flex: 1 1 0; }
 
-  .asset-filter-row { flex-direction: row; align-items: center; gap: 6px; flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  .asset-filter-row::-webkit-scrollbar { display: none; }
-  .asset-filter-row .form-control { width: auto !important; min-width: 0 !important; flex: 0 0 auto; padding: 5px 8px !important; font-size: 0.78rem !important; }
-  .asset-filter-row > span { display: none; }
+  .asset-filter-row { flex-direction: row !important; align-items: center !important; gap: 6px !important; flex-wrap: wrap !important; }
+  .asset-filter-row .form-control { width: auto !important; min-width: 0 !important; flex: 1 1 calc(50% - 6px) !important; max-width: calc(50% - 3px) !important; padding: 5px 8px !important; font-size: 0.78rem !important; }
+  .asset-filter-row > span { display: none !important; }
   .asset-filter-row select.form-control { padding: 5px 28px 5px 8px !important; min-height: 32px !important; border-radius: 14px !important; }
+  .asset-filter-row .btn { flex: 0 0 auto !important; }
 
   /* Asset class tabs: horizontal scroll, not wrap */
   .asset-class-tabs {
@@ -2022,11 +2071,14 @@ select.form-control:focus {
 
 /* ===== Mobile Responsive — Tables as Cards ===== */
 @media (max-width: 640px) {
-  /* Section header: stack vertically, full width buttons */
+  /* Section header: stack vertically, button groups full width */
   .section-header {
     flex-direction: column;
-    align-items: stretch !important;
+    align-items: flex-start !important;
     gap: 10px;
+  }
+  .section-header > .btn {
+    align-self: flex-start;
   }
   .section-header .btn-group,
   .section-header .responsive-btn-group {
@@ -2045,24 +2097,20 @@ select.form-control:focus {
     padding: 6px 8px;
   }
 
-  /* Filter row: compact horizontal scrollable on mobile */
-  .asset-filter-row,
-  .card > div[style*="flex-wrap"] {
+  /* Filter row: two columns on small mobile */
+  .asset-filter-row {
     flex-direction: row !important;
     align-items: center !important;
     gap: 4px !important;
-    flex-wrap: nowrap !important;
-    overflow-x: auto !important;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    flex-wrap: wrap !important;
   }
-  .asset-filter-row::-webkit-scrollbar { display: none; }
   .asset-filter-row .form-control,
   .asset-filter-row select,
   .asset-filter-row input {
     width: auto !important;
     min-width: 0 !important;
-    flex: 0 0 auto !important;
+    flex: 1 1 calc(50% - 4px) !important;
+    max-width: calc(50% - 2px) !important;
     padding: 4px 6px !important;
     font-size: 0.75rem !important;
   }
@@ -2073,9 +2121,7 @@ select.form-control:focus {
     border-radius: 12px !important;
     font-size: 0.75rem !important;
   }
-  .asset-filter-row input[type="date"] {
-    max-width: 120px !important;
-  }
+  .asset-filter-row .btn { flex: 0 0 auto !important; }
 
   /* Tabs: horizontal scroll, compact */
   .tabs {
@@ -2099,6 +2145,9 @@ select.form-control:focus {
   .table-wrapper table {
     min-width: 480px;
   }
+  .table-wrapper .asset-holdings-table {
+    min-width: 0 !important;
+  }
 
   /* Compact card-header on mobile */
   .card-header {
@@ -2111,7 +2160,7 @@ select.form-control:focus {
 
   /* Net worth breakdown: stack chart below bars */
   .card > div[style*="display:flex"][style*="flex-wrap"] {
-    flex-direction: column !important;
+    flex-direction: row !important;
   }
   .card > div[style*="display:flex"][style*="flex-wrap"] > div[style*="width:200px"] {
     width: 100% !important;

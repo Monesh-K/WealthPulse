@@ -129,13 +129,27 @@ const GoalsPage = {
               ` : ''}
 
               ${linkedAsset ? `
-                <div style="margin-top:8px; padding:8px 10px; background:var(--bg-tertiary); border-radius:8px; font-size:0.8rem; display:flex; align-items:center; gap:6px; flex-wrap:wrap">
-                  🔗 <strong>${Utils.esc(linkedAsset.name)}</strong>
-                  <span class="badge badge-other" style="font-size:0.7rem">${Utils.esc(linkedAsset.category || '')}</span>
-                  <span class="text-muted" style="margin-left:auto">${Utils.currency(linkedAsset.current_value_inr)}</span>
+                <div class="goal-linked-asset hide-mobile-inline">
+                  <div style="padding:8px 10px; background:var(--bg-tertiary); border-radius:8px; font-size:0.8rem; display:flex; align-items:center; gap:6px; flex-wrap:wrap">
+                    🔗 <strong>${Utils.esc(linkedAsset.name)}</strong>
+                    <span class="badge badge-other" style="font-size:0.7rem">${Utils.esc(linkedAsset.category || '')}</span>
+                    <span class="text-muted" style="margin-left:auto">${Utils.currency(linkedAsset.current_value_inr)}</span>
+                  </div>
+                </div>
+                <button class="btn btn-outline btn-xs show-mobile-only goal-linked-toggle" style="display:none;margin-top:8px;font-size:0.75rem" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'🔗 Show linked assets':'🔗 Hide linked assets'">🔗 Show linked assets</button>
+                <div class="show-mobile-only goal-linked-detail" style="display:none;margin-top:4px">
+                  <div style="padding:8px 10px; background:var(--bg-tertiary); border-radius:8px; font-size:0.8rem; display:flex; align-items:center; gap:6px; flex-wrap:wrap">
+                    🔗 <strong>${Utils.esc(linkedAsset.name)}</strong>
+                    <span class="badge badge-other" style="font-size:0.7rem">${Utils.esc(linkedAsset.category || '')}</span>
+                    <span class="text-muted" style="margin-left:auto">${Utils.currency(linkedAsset.current_value_inr)}</span>
+                  </div>
                 </div>
               ` : g.linked_asset ? `
-                <div style="margin-top:8px; font-size:0.8rem; color:var(--text-muted)">
+                <div class="goal-linked-asset hide-mobile-inline" style="margin-top:8px; font-size:0.8rem; color:var(--text-muted)">
+                  🔗 Linked to: ${Utils.esc(g.linked_asset)}
+                </div>
+                <button class="btn btn-outline btn-xs show-mobile-only goal-linked-toggle" style="display:none;margin-top:8px;font-size:0.75rem" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.textContent=this.nextElementSibling.style.display==='none'?'🔗 Show linked assets':'🔗 Hide linked assets'">🔗 Show linked assets</button>
+                <div class="show-mobile-only goal-linked-detail" style="display:none;margin-top:4px;font-size:0.8rem;color:var(--text-muted)">
                   🔗 Linked to: ${Utils.esc(g.linked_asset)}
                 </div>
               ` : ''}

@@ -63,11 +63,25 @@ router.get('/', (req, res) => {
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 
-// Monthly summary
+// Monthly summary (supports filters)
 router.get('/summary', (req, res) => {
   try {
-    const { months = 12 } = req.query;
+    const { months = 12, type, category, subcategory, search, dateFrom, dateTo, bank_account } = req.query;
     const safeMonths = Math.max(1, Math.min(120, parseInt(months) || 12));
+    let where = "date >= date('now', '-' || ? || ' months')";
+    const params = [String(safeMonths)];
+    if (type) { where += ' AND type = ?'; params.push(type); }
+    if (category) { where += ' AND category = ?'; params.push(category); }
+    if (subcategory) { where += ' AND subcategory = ?'; params.push(subcategory); }
+    if (bank_account) { where += ' AND bank_account = ?'; params.push(bank_account); }
+    if (search) {
+      where += ' AND (LOWER(description) LIKE ? OR LOWER(category) LIKE ? OR LOWER(subcategory) LIKE ?)';
+      const s = `%${search.toLowerCase()}%`;
+      params.push(s, s, s);
+    }
+    if (dateFrom) { where += ' AND date >= ?'; params.push(dateFrom); }
+    if (dateTo) { where += ' AND date <= ?'; params.push(dateTo); }
+
     const data = db.prepare(`
       SELECT
         strftime('%Y-%m', date) as month,
@@ -75,22 +89,31 @@ router.get('/summary', (req, res) => {
         SUM(amount) as total,
         COUNT(*) as count
       FROM transactions
-      WHERE date >= date('now', '-' || ? || ' months')
+      WHERE ${where}
       GROUP BY strftime('%Y-%m', date), type
       ORDER BY month DESC
-    `).all(String(safeMonths));
+    `).all(...params);
 
     // Investment expenses per month (treated as savings, not true expenses)
+    const invParams = [String(safeMonths)];
+    let invWhere = "date >= date('now', '-' || ? || ' months') AND type = 'expense' AND category = 'Investment'";
+    if (bank_account) { invWhere += ' AND bank_account = ?'; invParams.push(bank_account); }
+    if (search) {
+      invWhere += ' AND (LOWER(description) LIKE ? OR LOWER(category) LIKE ? OR LOWER(subcategory) LIKE ?)';
+      const s = `%${search.toLowerCase()}%`;
+      invParams.push(s, s, s);
+    }
+    if (dateFrom) { invWhere += ' AND date >= ?'; invParams.push(dateFrom); }
+    if (dateTo) { invWhere += ' AND date <= ?'; invParams.push(dateTo); }
+
     const investmentExpenses = db.prepare(`
       SELECT
         strftime('%Y-%m', date) as month,
         SUM(amount) as total
       FROM transactions
-      WHERE date >= date('now', '-' || ? || ' months')
-        AND type = 'expense'
-        AND category = 'Investment'
+      WHERE ${invWhere}
       GROUP BY strftime('%Y-%m', date)
-    `).all(String(safeMonths));
+    `).all(...invParams);
     const investmentByMonth = {};
     investmentExpenses.forEach(r => { investmentByMonth[r.month] = r.total; });
 

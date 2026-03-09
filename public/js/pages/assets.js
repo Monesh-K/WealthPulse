@@ -23,7 +23,6 @@ const AssetsPage = {
           <p class="text-muted" style="font-size:0.85rem; margin-top:4px">Track investments, monitor performance & allocation</p>
         </div>
         <div class="btn-group responsive-btn-group">
-          <button class="btn btn-outline btn-sm" onclick="AssetsPage.openSipCalendar()">📅 SIP Calendar</button>
           <button class="btn btn-outline btn-sm" onclick="AssetsPage.toggleSelectMode()" id="selectModeBtn">☑ Select</button>
           <button class="btn btn-outline btn-sm" onclick="AssetsPage.mergeduplicates()">🔀 Merge Duplicates</button>
           <button class="btn btn-primary btn-sm" onclick="AssetsPage.openForm()">+ Add Asset</button>
@@ -38,20 +37,20 @@ const AssetsPage = {
         <div class="asset-filter-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
           <span style="font-weight:600; font-size:0.85rem; color:var(--text-secondary)">Filter:</span>
           <input type="text" class="form-control" id="assetSearchInput" placeholder="Search assets..."
-            style="width:auto; min-width:140px; padding:6px 10px; font-size:0.85rem"
+            style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem"
             oninput="AssetsPage.onSearchInput(this.value)">
           <select class="form-control" id="assetFilterCategory"
-            style="width:auto; min-width:110px; padding:6px 10px; font-size:0.85rem"
+            style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem"
             onchange="AssetsPage.onFilterChange()">
             <option value="">All Categories</option>
           </select>
           <select class="form-control" id="assetFilterClass"
-            style="width:auto; min-width:120px; padding:6px 10px; font-size:0.85rem"
+            style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem"
             onchange="AssetsPage.onFilterChange()">
             <option value="">All Asset Classes</option>
           </select>
           <select class="form-control" id="assetFilterFundType"
-            style="width:auto; min-width:120px; padding:6px 10px; font-size:0.85rem"
+            style="width:auto; flex:1; min-width:100px; padding:6px 10px; font-size:0.85rem"
             onchange="AssetsPage.onFilterChange()">
             <option value="">All Fund Types</option>
           </select>
@@ -308,19 +307,19 @@ const AssetsPage = {
           </div>
         ` : ''}
         <div class="table-wrapper">
-          <table>
+          <table class="asset-holdings-table">
             <thead>
               <tr>
-                ${this.selectMode ? '<th style="width:40px"><input type="checkbox" onchange="AssetsPage.toggleSelectAll(this.checked)"></th>' : ''}
+                ${this.selectMode ? `<th style="width:40px"><input type="checkbox" ${this.selectedIds.size === displayItems.length && displayItems.length > 0 ? 'checked' : ''} onchange="AssetsPage.toggleSelectAll(this.checked)"></th>` : ''}
                 <th>Name</th>
-                <th>Category</th>
+                <th class="hide-mobile">Category</th>
                 <th class="hide-mobile">Class</th>
-                <th class="text-right">Invested</th>
+                <th class="text-right hide-mobile-asset">Invested</th>
                 <th class="text-right">Current</th>
                 <th class="text-right">Gain/Loss</th>
                 <th class="text-right hide-mobile">XIRR</th>
                 <th class="text-right hide-mobile">1D</th>
-                <th class="text-center">Actions</th>
+                <th class="text-center hide-mobile-asset">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -339,15 +338,15 @@ const AssetsPage = {
                 const curUSD = isUSD ? (a.current_value || 0) : 0;
                 const gainUSD = curUSD - invUSD;
                 return `
-                  <tr>
-                    ${this.selectMode ? `<td><input type="checkbox" class="asset-checkbox" value="${a.id}" ${this.selectedIds.has(a.id) ? 'checked' : ''} onchange="AssetsPage.toggleSelect('${a.id}', this.checked)"></td>` : ''}
+                  <tr class="asset-row" onclick="AssetsPage.toggleMobileDetail(this)">
+                    ${this.selectMode ? `<td><input type="checkbox" class="asset-checkbox" value="${a.id}" ${this.selectedIds.has(a.id) ? 'checked' : ''} onchange="event.stopPropagation();AssetsPage.toggleSelect('${a.id}', this.checked)"></td>` : ''}
                     <td>
                       <strong class="asset-name-text" title="${Utils.esc(a.name)}">${Utils.truncateText(a.name, 28)}</strong>
                       ${a.ticker ? `<br><span class="text-muted" style="font-size:0.75rem">${Utils.esc(a.ticker)}</span>` : ''}
                     </td>
-                    <td>${Utils.categoryBadge(a.category)}</td>
+                    <td class="hide-mobile">${Utils.categoryBadge(a.category)}</td>
                     <td class="hide-mobile"><span class="text-muted" style="font-size:0.82rem">${Utils.esc(a.asset_class || '-')}</span></td>
-                    <td class="text-right font-mono">
+                    <td class="text-right font-mono hide-mobile-asset">
                       ${Utils.currency(inv)}
                       ${isUSD ? `<br><span class="usd-value text-muted" style="font-size:0.73rem">$${invUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>` : ''}
                     </td>
@@ -362,11 +361,38 @@ const AssetsPage = {
                     </td>
                     <td class="text-right font-mono hide-mobile ${xirrVal !== null ? Utils.gainColor(xirrVal) : 'text-muted'}">${xirrVal !== null ? Utils.percent(xirrVal) : '-'}</td>
                     <td class="text-right font-mono hide-mobile ${Utils.gainColor(a.day_change_pct || 0)}">${a.day_change_pct ? (a.day_change_pct > 0 ? '+' : '') + a.day_change_pct.toFixed(2) + '%' : '-'}</td>
-                    <td class="text-center">
+                    <td class="text-center hide-mobile-asset">
                       <div class="btn-group" style="justify-content:center">
-                        <button class="btn-icon" onclick="AssetsPage.openAssetTransactions('${a.id}')" title="Transaction History">📜</button>
-                        <button class="btn-icon" onclick="AssetsPage.openForm('${a.id}')" title="Edit">✏️</button>
-                        <button class="btn-icon danger" onclick="AssetsPage.deleteItem('${a.id}')" title="Delete">🗑️</button>
+                        <button class="btn-icon" onclick="event.stopPropagation();AssetsPage.openForm('${a.id}')" title="Edit">✏️</button>
+                        <button class="btn-icon danger" onclick="event.stopPropagation();AssetsPage.deleteItem('${a.id}')" title="Delete">🗑️</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr class="asset-detail-row">
+                    <td colspan="99">
+                      <div class="asset-detail-content">
+                        <div class="asset-detail-grid">
+                          <div class="asset-detail-item">
+                            <span class="asset-detail-label">Invested</span>
+                            <span class="font-mono">${Utils.currency(inv)}${isUSD ? ` <span class="text-muted" style="font-size:0.72rem">($${invUSD.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})})</span>` : ''}</span>
+                          </div>
+                          <div class="asset-detail-item">
+                            <span class="asset-detail-label">Category</span>
+                            <span>${Utils.categoryBadge(a.category)}${a.asset_class ? ` <span class="text-muted" style="font-size:0.75rem">${Utils.esc(a.asset_class)}</span>` : ''}</span>
+                          </div>
+                          <div class="asset-detail-item">
+                            <span class="asset-detail-label">1D Change</span>
+                            <span class="font-mono ${Utils.gainColor(a.day_change_pct || 0)}">${a.day_change_pct ? (a.day_change_pct > 0 ? '+' : '') + a.day_change_pct.toFixed(2) + '%' : '-'}</span>
+                          </div>
+                          <div class="asset-detail-item">
+                            <span class="asset-detail-label">XIRR</span>
+                            <span class="font-mono ${xirrVal !== null ? Utils.gainColor(xirrVal) : 'text-muted'}">${xirrVal !== null ? Utils.percent(xirrVal) : '-'}</span>
+                          </div>
+                        </div>
+                        <div class="asset-detail-actions">
+                          <button class="btn btn-outline btn-xs" onclick="event.stopPropagation();AssetsPage.openForm('${a.id}')">✏️ Edit</button>
+                          <button class="btn btn-outline btn-xs danger" onclick="event.stopPropagation();AssetsPage.deleteItem('${a.id}')">🗑️ Delete</button>
+                        </div>
                       </div>
                     </td>
                   </tr>`;
@@ -1460,62 +1486,12 @@ const AssetsPage = {
     } catch (e) { Toast.error(e.message); }
   },
 
-  // ─── SIP Calendar ──────────────────────────────
-  async openSipCalendar() {
-    Modal.open('SIP Calendar — This Month', `
-      <div id="sipCalendarContent">
-        <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:0.85rem;padding:20px 0">
-          <div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Loading SIP calendar...
-        </div>
-      </div>
-    `);
-
-    try {
-      const res = await API.getSipCalendar();
-      const data = res.data || {};
-      const entries = data.entries || [];
-      const totalSIP = data.totalMonthly || entries.reduce((s, e) => s + (e.amount || 0), 0);
-      const container = document.getElementById('sipCalendarContent');
-      if (!container) return;
-
-      // Group by date
-      const byDate = {};
-      entries.forEach(e => {
-        const dateKey = e.date || 'Unscheduled';
-        if (!byDate[dateKey]) byDate[dateKey] = [];
-        byDate[dateKey].push(e);
-      });
-
-      container.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding:12px;background:var(--bg-tertiary);border-radius:8px">
-          <div>
-            <span class="text-muted" style="font-size:0.82rem">Total Monthly SIP</span>
-            <div style="font-size:1.1rem;font-weight:700;color:var(--accent)">${Utils.currency(totalSIP)}</div>
-          </div>
-          <div>
-            <span class="text-muted" style="font-size:0.82rem">Active SIPs</span>
-            <div style="font-size:1.1rem;font-weight:700">${entries.length}</div>
-          </div>
-        </div>
-        ${entries.length ? `
-          ${Object.keys(byDate).sort().map(date => `
-            <div style="margin-bottom:12px">
-              <div style="font-weight:600;font-size:0.85rem;color:var(--text-secondary);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border-color)">
-                ${date !== 'Unscheduled' ? Utils.formatDate(date) : 'Unscheduled'}
-              </div>
-              ${byDate[date].map(e => `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;font-size:0.85rem;border-radius:6px;margin-bottom:4px" onmouseover="this.style.background='var(--bg-tertiary)'" onmouseout="this.style.background='transparent'">
-                  <span>${Utils.esc(e.name)}</span>
-                  <span class="font-mono" style="font-weight:600;color:var(--blue)">${Utils.currency(e.amount)}</span>
-                </div>
-              `).join('')}
-            </div>
-          `).join('')}
-        ` : '<div class="empty-state" style="padding:24px"><p>No SIPs scheduled this month.</p></div>'}
-      `;
-    } catch (err) {
-      const container = document.getElementById('sipCalendarContent');
-      if (container) container.innerHTML = `<div class="empty-state"><p>Error: ${Utils.esc(err.message)}</p></div>`;
-    }
+  toggleMobileDetail(row) {
+    // Only toggle on mobile
+    if (window.innerWidth > 768) return;
+    const detailRow = row.nextElementSibling;
+    if (!detailRow || !detailRow.classList.contains('asset-detail-row')) return;
+    detailRow.classList.toggle('open');
+    row.classList.toggle('expanded');
   },
 };

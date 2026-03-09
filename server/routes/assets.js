@@ -461,7 +461,7 @@ router.get('/portfolio-xirr', (req, res) => {
 // ─── SIP Calendar ────────────────────────────────
 router.get('/sip-calendar', (req, res) => {
   try {
-    const sipAssets = db.prepare('SELECT id, name, category, sip_amount, sip_date, ticker FROM assets WHERE sip_amount > 0 ORDER BY sip_date ASC').all();
+    const sipAssets = db.prepare('SELECT id, name, category, sip_amount, sip_date, ticker, monthly_contribution FROM assets WHERE sip_amount > 0 OR monthly_contribution > 0 ORDER BY sip_date ASC').all();
 
     // Group by sip_date (day of month)
     const byDate = {};
@@ -472,7 +472,7 @@ router.get('/sip-calendar', (req, res) => {
         id: a.id,
         name: a.name,
         category: a.category,
-        sip_amount: a.sip_amount,
+        sip_amount: a.sip_amount || a.monthly_contribution || 0,
         sip_date: day,
         ticker: a.ticker,
       });
@@ -481,7 +481,7 @@ router.get('/sip-calendar', (req, res) => {
     // Include liabilities with EMI for complete monthly outflow
     const emiLiabilities = db.prepare('SELECT id, name, type, emi, outstanding FROM liabilities WHERE emi > 0 ORDER BY emi DESC').all();
 
-    const totalSIP = sipAssets.reduce((s, a) => s + (a.sip_amount || 0), 0);
+    const totalSIP = sipAssets.reduce((s, a) => s + (a.sip_amount || a.monthly_contribution || 0), 0);
     const totalEMI = emiLiabilities.reduce((s, l) => s + (l.emi || 0), 0);
 
     res.json({
