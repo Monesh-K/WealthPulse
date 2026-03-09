@@ -13,7 +13,6 @@ const App = {
     essentials: EssentialsPage,
     calculators: CalculatorsPage,
     settings: SettingsPage,
-    marketcharts: MarketChartsPage,
     news: NewsPage,
     aichat: AIChatPage,
   },
@@ -111,7 +110,6 @@ const App = {
       essentials: 'Financial Essentials',
       calculators: 'Financial Calculators',
       settings: 'Settings',
-      marketcharts: 'Market Charts',
       news: 'Financial News',
       aichat: 'AI Chat',
     };

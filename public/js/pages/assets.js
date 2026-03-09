@@ -11,6 +11,7 @@ const AssetsPage = {
   activeTab: 'list',
   selectMode: false,
   selectedIds: new Set(),
+  statFilter: '', // 'growth', 'retirement', 'emergency' or ''
 
   allItems: [], // all assets without pagination for SIP/FD tabs
 
@@ -23,7 +24,6 @@ const AssetsPage = {
         </div>
         <div class="btn-group responsive-btn-group">
           <button class="btn btn-outline btn-sm" onclick="AssetsPage.openSipCalendar()">📅 SIP Calendar</button>
-          <button class="btn btn-outline btn-sm" onclick="AssetsPage.openTaxReport()">📋 Tax Report</button>
           <button class="btn btn-outline btn-sm" onclick="AssetsPage.toggleSelectMode()" id="selectModeBtn">☑ Select</button>
           <button class="btn btn-outline btn-sm" onclick="AssetsPage.mergeduplicates()">🔀 Merge Duplicates</button>
           <button class="btn btn-primary btn-sm" onclick="AssetsPage.openForm()">+ Add Asset</button>
@@ -147,18 +147,18 @@ const AssetsPage = {
         <div class="stat-sub ${Utils.gainClass(gain)}">${gain >= 0 ? '↑' : '↓'} ${Utils.percent(Math.abs(gainPct))}</div>
       </div>
       ${growth > 0 ? `
-      <div class="stat-card" style="border-left:3px solid #3b82f6">
+      <div class="stat-card${this.statFilter === 'growth' ? ' active-stat' : ''}" style="border-left:3px solid #3b82f6;cursor:pointer" onclick="AssetsPage.filterByStat('growth')">
         <div class="stat-label">Growth Assets</div>
         <div class="stat-value">${Utils.currency(growth)}</div>
         <div class="stat-sub">Invested: ${Utils.currency(growthInv)} · ${alloc.totalValue > 0 ? Utils.percent(growth / alloc.totalValue * 100) : '0%'} of portfolio</div>
       </div>` : ''}
       ${retirement > 0 ? `
-      <div class="stat-card" style="border-left:3px solid #7c3aed">
+      <div class="stat-card${this.statFilter === 'retirement' ? ' active-stat' : ''}" style="border-left:3px solid #7c3aed;cursor:pointer" onclick="AssetsPage.filterByStat('retirement')">
         <div class="stat-label">Retirement Corpus</div>
         <div class="stat-value">${Utils.currency(retirement)}</div>
         <div class="stat-sub">Invested: ${Utils.currency(retirementInv)} · ${alloc.totalValue > 0 ? Utils.percent(retirement / alloc.totalValue * 100) : '0%'} of portfolio</div>
       </div>` : ''}
-      <div class="stat-card yellow">
+      <div class="stat-card yellow${this.statFilter === 'emergency' ? ' active-stat' : ''}" style="cursor:pointer" onclick="AssetsPage.filterByStat('emergency')">
         <div class="stat-label">Emergency Fund</div>
         <div class="stat-value">${Utils.currency(emergency)}</div>
         <div class="stat-sub">${alloc.totalValue > 0 ? Utils.percent(emergency / alloc.totalValue * 100) : '0%'} of portfolio</div>
@@ -168,6 +168,42 @@ const AssetsPage = {
       statsHTML += `<div style="grid-column: 1 / -1; text-align:center; padding:4px; font-size:0.78rem; color:var(--text-muted); background:var(--bg-tertiary); border-radius:6px">Showing filtered results</div>`;
     }
     document.getElementById('assetStats').innerHTML = statsHTML;
+  },
+
+  filterByStat(stat) {
+    // Toggle: clicking same stat clears the filter
+    this.statFilter = this.statFilter === stat ? '' : stat;
+    this.renderStats();
+    this.switchTab(this.activeTab);
+  },
+
+  _isEmergencyAsset(a) {
+    if (a.is_emergency_fund === 1) return true;
+    const cat = a.category || '';
+    const ft = (a.fund_type || '').toLowerCase();
+    if (cat === 'Retirement') return false;
+    const isFD = ft === 'fd' || ft === 'fixed deposit' || (a.subtype || '').toLowerCase().includes('fixed deposit') ||
+                 (a.name || '').toLowerCase().includes('fixed deposit') || (a.name || '').toLowerCase().includes(' fd');
+    return cat === 'Cash' || ft === 'arbitrage' || ft === 'liquid' || isFD;
+  },
+
+  _isRetirementAsset(a) {
+    return (a.category || '') === 'Retirement';
+  },
+
+  _isGrowthAsset(a) {
+    return !this._isEmergencyAsset(a) && !this._isRetirementAsset(a);
+  },
+
+  getStatFilteredItems() {
+    if (!this.statFilter) return this.items;
+    const all = this.allItems.length ? this.allItems : this.items;
+    switch (this.statFilter) {
+      case 'growth': return all.filter(a => this._isGrowthAsset(a));
+      case 'retirement': return all.filter(a => this._isRetirementAsset(a));
+      case 'emergency': return all.filter(a => this._isEmergencyAsset(a));
+      default: return this.items;
+    }
   },
 
   populateFilters() {
@@ -239,27 +275,32 @@ const AssetsPage = {
   // ─── Holdings List ───────────────────────────
   renderList() {
     const container = document.getElementById('assetTabContent');
-    if (!this.items.length) {
+    const displayItems = this.statFilter ? this.getStatFilteredItems() : this.items;
+    const statLabels = { growth: 'Growth Assets', retirement: 'Retirement Corpus', emergency: 'Emergency Fund' };
+
+    if (!displayItems.length) {
       container.innerHTML = `
         <div class="card">
           ${this._renderAssetClassTabs()}
+          ${this.statFilter ? `<div style="padding:8px 16px;background:var(--accent-bg,rgba(99,102,241,0.08));border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between"><span style="font-size:0.85rem;font-weight:600">Showing: ${statLabels[this.statFilter]}</span><button class="btn btn-outline btn-xs" onclick="AssetsPage.filterByStat('')">Clear</button></div>` : ''}
           <div class="empty-state">
             <div class="empty-icon">📦</div>
             <h3>No assets found</h3>
-            <p>${this.activeFilter.search || this.activeFilter.category || this.activeFilter.asset_class ? 'Try adjusting your filters' : 'Add your first investment to get started'}</p>
+            <p>${this.activeFilter.search || this.activeFilter.category || this.activeFilter.asset_class || this.statFilter ? 'Try adjusting your filters' : 'Add your first investment to get started'}</p>
             <button class="btn btn-primary btn-sm" onclick="AssetsPage.openForm()">+ Add Asset</button>
           </div>
         </div>`;
       return;
     }
 
-    const { page, pageSize, total, totalPages } = this.pagination;
+    const { page, pageSize, total, totalPages } = this.statFilter ? { page: 1, pageSize: displayItems.length, total: displayItems.length, totalPages: 1 } : this.pagination;
     const startItem = (page - 1) * pageSize + 1;
     const endItem = Math.min(page * pageSize, total);
 
     container.innerHTML = `
       <div class="card">
         ${this._renderAssetClassTabs()}
+        ${this.statFilter ? `<div style="padding:8px 16px;background:var(--accent-bg,rgba(99,102,241,0.08));border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between"><span style="font-size:0.85rem;font-weight:600">Showing: ${statLabels[this.statFilter]} (${displayItems.length})</span><button class="btn btn-outline btn-xs" onclick="AssetsPage.filterByStat('')">Clear</button></div>` : ''}
         ${this.selectMode && this.selectedIds.size > 0 ? `
           <div class="bulk-action-bar" style="position:sticky;top:0;z-index:10;background:var(--bg-primary);padding:12px 16px;border-bottom:2px solid var(--red);display:flex;align-items:center;justify-content:space-between;gap:12px;border-radius:12px 12px 0 0">
             <span style="font-size:0.85rem;font-weight:600">${this.selectedIds.size} asset(s) selected</span>
@@ -283,7 +324,7 @@ const AssetsPage = {
               </tr>
             </thead>
             <tbody>
-              ${this.items.map(a => {
+              ${displayItems.map(a => {
                 const inv = a.invested_value_inr || a.invested_value || 0;
                 const cur = a.current_value_inr || a.current_value || 0;
                 const gain = cur - inv;
@@ -1298,77 +1339,6 @@ const AssetsPage = {
       await this.loadAll();
     } catch (e) {
       Toast.error(e.message);
-    }
-  },
-
-  // ─── Tax Report ────────────────────────────────
-  async openTaxReport() {
-    Modal.open('Tax Report — Capital Gains', `
-      <div id="taxReportContent">
-        <div style="display:flex;align-items:center;gap:8px;color:var(--text-muted);font-size:0.85rem;padding:20px 0">
-          <div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Generating tax report...
-        </div>
-      </div>
-    `);
-
-    try {
-      const res = await API.getTaxReport();
-      const data = res.data || {};
-      const assets = data.assets || [];
-      const stcg = data.totalSTCG || 0;
-      const ltcg = data.totalLTCG || 0;
-      const totalGains = stcg + ltcg;
-      const estimatedTax = data.estimatedTax || 0;
-
-      const container = document.getElementById('taxReportContent');
-      if (!container) return;
-
-      container.innerHTML = `
-        <div class="stats-grid" style="margin-bottom:16px">
-          <div class="stat-card ${stcg >= 0 ? 'yellow' : 'green'}">
-            <div class="stat-label">Short-Term Capital Gains</div>
-            <div class="stat-value">${Utils.currency(stcg)}</div>
-            <div class="stat-sub">Held &lt; 1 year</div>
-          </div>
-          <div class="stat-card ${ltcg >= 0 ? 'yellow' : 'green'}">
-            <div class="stat-label">Long-Term Capital Gains</div>
-            <div class="stat-value">${Utils.currency(ltcg)}</div>
-            <div class="stat-sub">Held &gt; 1 year</div>
-          </div>
-          <div class="stat-card red">
-            <div class="stat-label">Estimated Tax</div>
-            <div class="stat-value">${Utils.currency(estimatedTax)}</div>
-            <div class="stat-sub">On total gains of ${Utils.currency(totalGains)}</div>
-          </div>
-        </div>
-        ${assets.length ? `
-        <div class="table-wrapper" style="max-height:400px;overflow-y:auto">
-          <table>
-            <thead><tr><th>Asset</th><th>Category</th><th class="text-right">Invested</th><th class="text-right">Current</th><th class="text-right">Gain/Loss</th><th>Type</th><th class="text-right">Tax</th></tr></thead>
-            <tbody>
-              ${assets.map(a => {
-                const gain = (a.current_value || 0) - (a.invested_value || 0);
-                const isLTCG = a.holding_type === 'LTCG';
-                return `
-                  <tr>
-                    <td><strong title="${Utils.esc(a.name)}">${Utils.truncateText(a.name, 24)}</strong></td>
-                    <td>${Utils.categoryBadge(a.category)}</td>
-                    <td class="text-right font-mono">${Utils.currency(a.invested_value || 0)}</td>
-                    <td class="text-right font-mono">${Utils.currency(a.current_value || 0)}</td>
-                    <td class="text-right font-mono ${Utils.gainColor(gain)}">${Utils.currency(gain)}</td>
-                    <td><span class="badge" style="font-size:0.72rem;padding:2px 6px;background:${isLTCG ? 'var(--green-bg,#f0fdf4)' : 'var(--yellow-bg,#fffbeb)'};color:${isLTCG ? 'var(--green)' : 'var(--yellow,#f59e0b)'}">${isLTCG ? 'LTCG' : 'STCG'}</span></td>
-                    <td class="text-right font-mono text-red">${Utils.currency(a.estimated_tax || 0)}</td>
-                  </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-        ` : '<div class="empty-state" style="padding:24px"><p>No taxable gains data available.</p></div>'}
-        <p class="text-muted" style="font-size:0.78rem;margin-top:12px">Note: This is an estimate. Consult a tax advisor for actual tax liability.</p>
-      `;
-    } catch (err) {
-      const container = document.getElementById('taxReportContent');
-      if (container) container.innerHTML = `<div class="empty-state"><p>Error: ${Utils.esc(err.message)}</p></div>`;
     }
   },
 

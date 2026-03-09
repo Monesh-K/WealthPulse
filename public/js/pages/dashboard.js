@@ -441,49 +441,49 @@ const DashboardPage = {
         </div>`;
       })() : ''}
 
-      <!-- Gold-Silver Ratio -->
+      <!-- Gold-Silver Ratio Analysis -->
       ${d._goldSilverRatio ? (() => {
         const gs = d._goldSilverRatio;
         const ratio = gs.ratio;
-        let cheaperMetal, cheaperColor;
+        let cheaperMetal, cheaperExplanation;
         if (ratio > gs.historicalAvg + 10) {
           cheaperMetal = 'Silver is relatively cheaper';
-          cheaperColor = '#94a3b8';
+          cheaperExplanation = `The ratio (${ratio}) is well above the historical average (${gs.historicalAvg}), meaning silver is undervalued relative to gold. Consider increasing silver allocation.`;
         } else if (ratio < gs.historicalAvg - 10) {
           cheaperMetal = 'Gold is relatively cheaper';
-          cheaperColor = '#f59e0b';
+          cheaperExplanation = `The ratio (${ratio}) is well below the historical average (${gs.historicalAvg}), meaning gold is undervalued relative to silver. Consider increasing gold allocation.`;
         } else {
-          cheaperMetal = 'Both fairly valued';
-          cheaperColor = 'var(--text-secondary)';
+          cheaperMetal = 'Both are fairly valued';
+          cheaperExplanation = `The ratio (${ratio}) is close to the historical average (${gs.historicalAvg}). Neither metal is significantly over or undervalued relative to the other.`;
         }
         const gaugePos = Math.min(100, Math.max(0, ((ratio - 30) / 70) * 100));
         return `
         <div class="card" style="margin-top:24px">
           <div class="card-header">
-            <div class="card-title">Gold-Silver Ratio</div>
-            <a href="#marketcharts" class="btn btn-ghost btn-xs">Full Analysis →</a>
+            <div class="card-title">Gold-Silver Ratio Analysis</div>
           </div>
-          <div style="padding:0 16px 16px">
-            <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-              <div style="text-align:center;flex:1;min-width:80px">
-                <div class="text-muted" style="font-size:0.72rem;text-transform:uppercase">Gold</div>
-                <div style="font-weight:700;font-size:1.1rem">${Utils.currency(gs.goldPrice)}</div>
-                <div class="text-muted" style="font-size:0.72rem">per gram</div>
-              </div>
-              <div style="text-align:center;flex:1;min-width:80px">
-                <div class="text-muted" style="font-size:0.72rem;text-transform:uppercase">Silver</div>
-                <div style="font-weight:700;font-size:1.1rem">${Utils.currency(gs.silverPrice)}</div>
-                <div class="text-muted" style="font-size:0.72rem">per gram</div>
-              </div>
-              <div style="text-align:center;flex:1;min-width:80px">
-                <div class="text-muted" style="font-size:0.72rem;text-transform:uppercase">Ratio</div>
-                <div style="font-weight:700;font-size:1.4rem">${ratio}</div>
-                <div class="text-muted" style="font-size:0.72rem">Avg: ${gs.historicalAvg}</div>
-              </div>
-              <div style="text-align:center;flex:1;min-width:100px">
-                <div style="font-weight:600;font-size:0.88rem;color:${cheaperColor}">${cheaperMetal}</div>
-              </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;padding:16px">
+            <div style="text-align:center">
+              <div class="text-muted" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Gold Price</div>
+              <div style="font-size:1.2rem;font-weight:700">${Utils.currency(gs.goldPrice)}</div>
+              <div class="text-muted" style="font-size:0.72rem">per gram</div>
             </div>
+            <div style="text-align:center">
+              <div class="text-muted" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Silver Price</div>
+              <div style="font-size:1.2rem;font-weight:700">${Utils.currency(gs.silverPrice)}</div>
+              <div class="text-muted" style="font-size:0.72rem">per gram</div>
+            </div>
+            <div style="text-align:center">
+              <div class="text-muted" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Current Ratio</div>
+              <div style="font-size:1.5rem;font-weight:700">${ratio}</div>
+              <div class="text-muted" style="font-size:0.72rem">Historical avg: ${gs.historicalAvg}</div>
+            </div>
+            <div style="text-align:center">
+              <div class="text-muted" style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Assessment</div>
+              <div style="font-size:0.95rem;font-weight:600;margin-top:4px">${gs.assessment}</div>
+            </div>
+          </div>
+          <div style="padding:0 16px 12px">
             <div style="position:relative;height:6px;background:linear-gradient(to right, #f59e0b 0%, #10b981 45%, #10b981 55%, #3b82f6 100%);border-radius:3px">
               <div style="position:absolute;left:${gaugePos}%;top:-5px;width:14px;height:14px;background:var(--bg-primary);border:3px solid var(--accent);border-radius:50%;transform:translateX(-50%)"></div>
             </div>
@@ -491,6 +491,17 @@ const DashboardPage = {
               <span>Gold cheaper</span><span>Normal</span><span>Silver cheaper</span>
             </div>
           </div>
+          <div style="padding:0 16px 16px">
+            <div style="background:var(--bg-secondary);border-radius:10px;padding:12px 14px;border-left:4px solid var(--accent)">
+              <div style="font-weight:600;font-size:0.88rem;margin-bottom:4px">${cheaperMetal}</div>
+              <p style="font-size:0.82rem;color:var(--text-secondary);margin:0;line-height:1.5">${cheaperExplanation}</p>
+            </div>
+          </div>
+          ${gs.suggestion ? `
+          <div style="padding:0 16px 16px">
+            <p style="font-size:0.82rem;color:var(--text-secondary);background:var(--bg-secondary);padding:10px 12px;border-radius:8px">${gs.suggestion}</p>
+          </div>
+          ` : ''}
         </div>`;
       })() : ''}
     `;
